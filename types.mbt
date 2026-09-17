@@ -95,6 +95,17 @@ pub fn CollectionConfig::to_json(self : CollectionConfig) -> Json {
 }
 
 ///|
+/// Convert a dense vector to its JSON array representation.
+/// Shared by point serialization, batch upsert and search.
+pub fn vector_to_json(vector : Array[Double]) -> Json {
+  let vec : Array[Json] = []
+  for x in vector {
+    vec.push(Json::number(x))
+  }
+  Json::array(vec)
+}
+
+///|
 /// A single point: an id, a dense vector, and an optional JSON payload.
 pub struct PointStruct {
   id : Int
@@ -115,13 +126,9 @@ pub fn PointStruct::new(
 /// Convert to the point object used by PUT /collections/{name}/points:
 /// `{ "id": 1, "vector": [...], "payload": {...} }`.
 pub fn PointStruct::to_json(self : PointStruct) -> Json {
-  let vec : Array[Json] = []
-  for x in self.vector {
-    vec.push(Json::number(x))
-  }
   {
     "id": Json::number(self.id.to_double()),
-    "vector": Json::array(vec),
+    "vector": vector_to_json(self.vector),
     "payload": self.payload,
   }
 }
@@ -151,10 +158,7 @@ pub fn PointStruct::from_json(json : Json) -> PointStruct? {
       }
     _ => return None
   }
-  let payload = match members.get("payload") {
-    Some(p) => p
-    None => Json::object({})
-  }
+  let payload = members.get("payload").unwrap_or(Json::object({}))
   Some({ id, vector, payload, })
 }
 
@@ -263,10 +267,7 @@ pub fn ScoredPoint::from_json(json : Json) -> ScoredPoint? {
     Some(Number(n, ..)) => n
     _ => return None
   }
-  let payload = match members.get("payload") {
-    Some(p) => Some(p)
-    None => None
-  }
+  let payload = members.get("payload")
   Some({ id, score, payload, })
 }
 

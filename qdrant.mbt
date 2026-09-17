@@ -212,11 +212,7 @@ pub async fn QdrantClient::upsert_points_batch(
   let payloads : Array[Json] = []
   for p in points {
     ids.push(Json::number(p.id.to_double()))
-    let v : Array[Json] = []
-    for x in p.vector {
-      v.push(Json::number(x))
-    }
-    vectors.push(Json::array(v))
+    vectors.push(vector_to_json(p.vector))
     payloads.push(p.payload)
   }
   let body : Json = {
@@ -297,18 +293,15 @@ pub async fn QdrantClient::search_points(
     name +
     "/points/search?limit=" +
     limit.to_string()
-  let vec : Array[Json] = []
-  for x in vector {
-    vec.push(Json::number(x))
-  }
   let body : Json = match filter {
     Some(f) =>
       {
-        "vector": Json::array(vec),
+        "vector": vector_to_json(vector),
         "with_payload": Json::boolean(true),
         "filter": f,
       }
-    None => { "vector": Json::array(vec), "with_payload": Json::boolean(true) }
+    None =>
+      { "vector": vector_to_json(vector), "with_payload": Json::boolean(true) }
   }
   let json = self.request_json(Post, path, Some(body))
   match parse_search_result(json) {
