@@ -1,0 +1,7 @@
+import {
+  "yuzhiblue/moon-qdrant" @moon_qdrant,
+  "moonbitlang/async",
+  "moonbitlang/core/env",
+}
+
+pkgtype(kind: "executable")

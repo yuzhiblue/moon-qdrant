@@ -78,10 +78,20 @@ client.delete_points("demo", [2])
 client.delete_collection("demo")
 ```
 
-## CLI demo
+## Examples
+
+Health-check CLI (needs a running Qdrant server):
 
 ```bash
 moon run cmd/main -- http://localhost:6333
+```
+
+End-to-end demo: create collection, upsert points, search (with and without
+a payload filter), read a point, delete points, drop the collection:
+
+```bash
+docker run -p 6333:6333 qdrant/qdrant
+moon run examples/demo -- http://localhost:6333
 ```
 
 ## Status / roadmap
