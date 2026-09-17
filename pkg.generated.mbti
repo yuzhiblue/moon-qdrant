@@ -67,6 +67,8 @@ pub async fn QdrantClient::list_collections(Self) -> Array[String]
 pub fn QdrantClient::new(String, api_key? : String?) -> Self
 pub async fn QdrantClient::search_points(Self, String, Array[Double], Int, filter? : Json?) -> Array[ScoredPoint]
 pub async fn QdrantClient::upsert_points(Self, String, Array[PointStruct]) -> Unit
+pub async fn QdrantClient::upsert_points_batch(Self, String, Array[PointStruct]) -> Unit
+pub impl VectorProvider for QdrantClient
 
 pub struct ScoredPoint {
   id : Int
@@ -86,3 +88,11 @@ pub fn VectorParams::to_json(Self) -> Json
 // Type aliases
 
 // Traits
+pub trait VectorProvider {
+  async fn create_collection(Self, String, CollectionConfig) -> Unit
+  async fn delete_collection(Self, String) -> Unit
+  async fn collection_exists(Self, String) -> Bool
+  async fn upsert_points(Self, String, Array[PointStruct]) -> Unit
+  async fn upsert_points_batch(Self, String, Array[PointStruct]) -> Unit
+  async fn search_points(Self, String, Array[Double], Int, filter? : Json?) -> Array[ScoredPoint]
+}
