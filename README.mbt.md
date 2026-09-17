@@ -98,8 +98,8 @@ Implemented:
 - [x] `GET /collections/{name}/points/{id}` get a point
 - [x] `POST /collections/{name}/points/delete` delete points by id
 - [x] `POST /collections/{name}/points/search` vector search with payload filters
-- [ ] batch operations
-- [ ] unified `VectorProvider` trait (extensible to other vector services)
+- [x] `PUT /collections/{name}/points/batch` batch upsert
+- [x] unified `VectorProvider` trait (extensible to other vector services)
 
 ## Development
 

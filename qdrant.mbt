@@ -197,6 +197,40 @@ pub async fn QdrantClient::upsert_points(
 }
 
 ///|
+/// Upsert points through the batch endpoint via
+/// `PUT /collections/{name}/points/batch`.
+/// The batch format packs ids, vectors and payloads into parallel arrays,
+/// which Qdrant applies as a single request.
+pub async fn QdrantClient::upsert_points_batch(
+  self : QdrantClient,
+  name : String,
+  points : Array[PointStruct],
+) -> Unit {
+  let path = "/collections/" + name + "/points/batch?wait=true"
+  let ids : Array[Json] = []
+  let vectors : Array[Json] = []
+  let payloads : Array[Json] = []
+  for p in points {
+    ids.push(Json::number(p.id.to_double()))
+    let v : Array[Json] = []
+    for x in p.vector {
+      v.push(Json::number(x))
+    }
+    vectors.push(Json::array(v))
+    payloads.push(p.payload)
+  }
+  let body : Json = {
+    "batch": {
+      "ids": Json::array(ids),
+      "vectors": Json::array(vectors),
+      "payloads": Json::array(payloads),
+    },
+  }
+  let json = self.request_json(Put, path, Some(body))
+  ignore(json)
+}
+
+///|
 /// Fetch a single point via `GET /collections/{name}/points/{id}`.
 /// Returns None when the point does not exist (404).
 pub async fn QdrantClient::get_point(
