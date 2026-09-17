@@ -59,6 +59,26 @@ pub fn VectorParams::to_json(self : VectorParams) -> Json {
 }
 
 ///|
+/// Parse VectorParams from the config fragment returned by
+/// GET /collections/{name}.
+pub fn VectorParams::from_json(json : Json) -> VectorParams? {
+  guard json is Object(members) else { return None }
+  let size = match members.get("size") {
+    Some(Number(n, ..)) => n.to_int()
+    _ => return None
+  }
+  let distance = match members.get("distance") {
+    Some(String(s)) =>
+      match Distance::from_wire(s) {
+        Some(d) => d
+        None => return None
+      }
+    _ => return None
+  }
+  Some({ size, distance, })
+}
+
+///|
 /// Collection configuration accepted by PUT /collections/{name}.
 pub struct CollectionConfig {
   vectors : VectorParams
@@ -146,4 +166,45 @@ pub fn CollectionList::from_json(json : Json) -> CollectionList? {
     }
   }
   Some({ names, })
+}
+
+///|
+/// Detailed information about a collection, from GET /collections/{name}.
+pub struct CollectionInfo {
+  status : String
+  points_count : Int?
+  vectors : VectorParams?
+}
+
+///|
+/// Parse the result object of GET /collections/{name} into a CollectionInfo.
+/// `points_count` and `vectors` are optional because Qdrant may omit them
+/// while a collection is still building.
+pub fn CollectionInfo::from_json(json : Json) -> CollectionInfo? {
+  guard json is Object(members) else { return None }
+  let result = match members.get("result") {
+    Some(Object(r)) => r
+    _ => return None
+  }
+  let status = match result.get("status") {
+    Some(String(s)) => s
+    _ => return None
+  }
+  let points_count = match result.get("points_count") {
+    Some(Number(n, ..)) => Some(n.to_int())
+    _ => None
+  }
+  let vectors = match result.get("config") {
+    Some(Object(config)) =>
+      match config.get("params") {
+        Some(Object(params)) =>
+          match params.get("vectors") {
+            Some(vectors_json) => VectorParams::from_json(vectors_json)
+            None => None
+          }
+        _ => None
+      }
+    _ => None
+  }
+  Some({ status, points_count, vectors, })
 }

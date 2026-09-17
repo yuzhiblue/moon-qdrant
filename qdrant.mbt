@@ -45,14 +45,14 @@ fn join_url(base : String, path : String) -> String {
 }
 
 ///|
-/// Send a request and return the parsed JSON body.
-/// Raises on transport errors or when the server answers with a non-2xx code.
-async fn QdrantClient::request_json(
+/// Send a request and return the HTTP status code together with the parsed
+/// JSON body.
+async fn QdrantClient::send(
   self : QdrantClient,
   verb : @mio.RequestMethod,
   path : String,
   body : Json?,
-) -> Json {
+) -> (Int, Json) {
   let url = join_url(self.base_url, path)
   let builder = match verb {
     Get => self.http.get(url)
@@ -70,12 +70,25 @@ async fn QdrantClient::request_json(
     None => builder
   }
   let res = builder.send()
-  if res.response.code < 200 || res.response.code >= 300 {
+  (res.response.code, res.json())
+}
+
+///|
+/// Send a request and return the parsed JSON body.
+/// Raises on transport errors or when the server answers with a non-2xx code.
+async fn QdrantClient::request_json(
+  self : QdrantClient,
+  verb : @mio.RequestMethod,
+  path : String,
+  body : Json?,
+) -> Json {
+  let (code, json) = self.send(verb, path, body)
+  if code < 200 || code >= 300 {
     raise Failure(
-      "Qdrant API error " + res.response.code.to_string() + ": " + res.text(),
+      "Qdrant API error " + code.to_string() + ": " + json.stringify(),
     )
   }
-  res.json()
+  json
 }
 
 ///|
@@ -117,4 +130,50 @@ pub async fn QdrantClient::create_collection(
   let json = self.request_json(Put, path, Some(config.to_json()))
   // Qdrant answers with {"result": true} on success; treat any 2xx as success.
   ignore(json)
+}
+
+///|
+/// Get detailed information about a collection via `GET /collections/{name}`.
+/// Raises when the collection does not exist or the server reports an error.
+pub async fn QdrantClient::collection_info(
+  self : QdrantClient,
+  name : String,
+) -> CollectionInfo {
+  let path = "/collections/" + name
+  let json = self.request_json(Get, path, None)
+  match CollectionInfo::from_json(json) {
+    Some(info) => info
+    None =>
+      raise Failure("unexpected collection info response: " + json.stringify())
+  }
+}
+
+///|
+/// Delete a collection via `DELETE /collections/{name}`.
+/// Raises when the collection does not exist or the server reports an error.
+pub async fn QdrantClient::delete_collection(
+  self : QdrantClient,
+  name : String,
+) -> Unit {
+  let path = "/collections/" + name
+  let json = self.request_json(Delete, path, None)
+  ignore(json)
+}
+
+///|
+/// Check whether a collection exists via `GET /collections/{name}`.
+/// Returns false when the server answers 404; raises on other errors.
+pub async fn QdrantClient::collection_exists(
+  self : QdrantClient,
+  name : String,
+) -> Bool {
+  let path = "/collections/" + name
+  let (code, _) = self.send(Get, path, None)
+  if code >= 200 && code < 300 {
+    true
+  } else if code == 404 {
+    false
+  } else {
+    raise Failure("Qdrant API error " + code.to_string())
+  }
 }

@@ -103,3 +103,67 @@ test "collection list parses the standard qdrant response" {
     None => fail("expected a collection list")
   }
 }
+
+///|
+test "vector params parse from a collection config fragment" {
+  let json : Json = { "size": 128, "distance": "Dot" }
+  match VectorParams::from_json(json) {
+    Some(vp) => {
+      assert_true(vp.size == 128)
+      assert_true(vp.distance.to_wire() == "Dot")
+    }
+    None => fail("expected vector params")
+  }
+}
+
+///|
+test "collection info parses the standard qdrant response" {
+  let json : Json = {
+    "result": {
+      "status": "green",
+      "points_count": 5,
+      "config": { "params": { "vectors": { "size": 4, "distance": "Cosine" } } },
+    },
+    "status": "ok",
+    "time": 0.001,
+  }
+  match CollectionInfo::from_json(json) {
+    Some(info) => {
+      assert_true(info.status == "green")
+      match info.points_count {
+        Some(n) => assert_true(n == 5)
+        None => fail("expected points count")
+      }
+      match info.vectors {
+        Some(vp) => {
+          assert_true(vp.size == 4)
+          assert_true(vp.distance.to_wire() == "Cosine")
+        }
+        None => fail("expected vectors config")
+      }
+    }
+    None => fail("expected collection info")
+  }
+}
+
+///|
+test "collection info tolerates a missing points count" {
+  let json : Json = {
+    "result": {
+      "status": "grey",
+      "config": { "params": { "vectors": { "size": 4, "distance": "Euclid" } } },
+    },
+    "status": "ok",
+  }
+  match CollectionInfo::from_json(json) {
+    Some(info) => {
+      assert_true(info.status == "grey")
+      assert_true(info.points_count is None)
+      match info.vectors {
+        Some(vp) => assert_true(vp.distance.to_wire() == "Euclid")
+        None => fail("expected vectors config")
+      }
+    }
+    None => fail("expected collection info")
+  }
+}

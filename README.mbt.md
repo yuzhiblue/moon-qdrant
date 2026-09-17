@@ -44,6 +44,15 @@ client.create_collection(
 
 // list collections
 let names = client.list_collections()
+
+// inspect a collection
+let info = client.collection_info("demo")
+
+// does it exist?
+let exists = client.collection_exists("demo")
+
+// delete it
+client.delete_collection("demo")
 ```
 
 ## CLI demo
@@ -59,6 +68,9 @@ Implemented:
 - [x] `GET /healthz` health check
 - [x] `GET /collections` list collections
 - [x] `PUT /collections/{name}` create collection
+- [x] `GET /collections/{name}` collection info
+- [x] `DELETE /collections/{name}` delete collection
+- [x] `GET /collections/{name}/exists` collection existence check
 - [ ] point upsert / delete / get
 - [ ] vector search with payload filters
 - [ ] batch operations
