@@ -1,0 +1,88 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "yuzhiblue/moon-qdrant"
+
+import {
+  "oboard/mio",
+}
+
+// Values
+pub fn parse_search_result(Json) -> Array[ScoredPoint]?
+
+// Errors
+
+// Types and methods
+pub struct CollectionConfig {
+  vectors : VectorParams
+}
+pub fn CollectionConfig::new(VectorParams) -> Self
+pub fn CollectionConfig::to_json(Self) -> Json
+
+pub struct CollectionInfo {
+  status : String
+  points_count : Int?
+  vectors : VectorParams?
+}
+pub fn CollectionInfo::from_json(Json) -> Self?
+
+pub struct CollectionList {
+  names : Array[String]
+}
+pub fn CollectionList::from_json(Json) -> Self?
+
+pub struct CollectionSummary {
+  name : String
+}
+pub fn CollectionSummary::from_json(Json) -> Self?
+
+pub(all) enum Distance {
+  Cosine
+  Euclid
+  Dot
+}
+pub fn Distance::from_wire(String) -> Self?
+pub fn Distance::to_wire(Self) -> String
+
+pub struct PointStruct {
+  id : Int
+  vector : Array[Double]
+  payload : Json
+}
+pub fn PointStruct::from_json(Json) -> Self?
+pub fn PointStruct::new(Int, Array[Double], Json) -> Self
+pub fn PointStruct::to_json(Self) -> Json
+
+pub struct QdrantClient {
+  base_url : String
+  api_key : String?
+  http : @mio.RequestClient
+}
+pub async fn QdrantClient::collection_exists(Self, String) -> Bool
+pub async fn QdrantClient::collection_info(Self, String) -> CollectionInfo
+pub async fn QdrantClient::create_collection(Self, String, CollectionConfig) -> Unit
+pub async fn QdrantClient::delete_collection(Self, String) -> Unit
+pub async fn QdrantClient::delete_points(Self, String, Array[Int]) -> Unit
+pub async fn QdrantClient::get_point(Self, String, Int) -> PointStruct?
+pub async fn QdrantClient::health(Self) -> Bool
+pub async fn QdrantClient::list_collections(Self) -> Array[String]
+pub fn QdrantClient::new(String, api_key? : String?) -> Self
+pub async fn QdrantClient::search_points(Self, String, Array[Double], Int, filter? : Json?) -> Array[ScoredPoint]
+pub async fn QdrantClient::upsert_points(Self, String, Array[PointStruct]) -> Unit
+
+pub struct ScoredPoint {
+  id : Int
+  score : Double
+  payload : Json?
+}
+pub fn ScoredPoint::from_json(Json) -> Self?
+
+pub struct VectorParams {
+  size : Int
+  distance : Distance
+}
+pub fn VectorParams::from_json(Json) -> Self?
+pub fn VectorParams::new(Int, Distance) -> Self
+pub fn VectorParams::to_json(Self) -> Json
+
+// Type aliases
+
+// Traits
