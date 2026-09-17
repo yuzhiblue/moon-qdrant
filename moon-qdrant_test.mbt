@@ -167,3 +167,37 @@ test "collection info tolerates a missing points count" {
     None => fail("expected collection info")
   }
 }
+
+///|
+test "point struct parses the point read response" {
+  let json : Json = {
+    "id": 7,
+    "vector": [0.5, 1.5, 2.5],
+    "payload": { "tag": "demo" },
+  }
+  match PointStruct::from_json(json) {
+    Some(point) => {
+      assert_true(point.id == 7)
+      assert_true(point.vector.length() == 3)
+      assert_true(point.vector[1] == 1.5)
+      match field(point.payload, "tag") {
+        Some(String(s)) => assert_true(s == "demo")
+        _ => fail("expected payload tag")
+      }
+    }
+    None => fail("expected a point struct")
+  }
+}
+
+///|
+test "point struct round-trips through json" {
+  let point = PointStruct::new(3, [1.0, 2.0], { "tag": "x" })
+  match PointStruct::from_json(point.to_json()) {
+    Some(parsed) => {
+      assert_true(parsed.id == 3)
+      assert_true(parsed.vector.length() == 2)
+      assert_true(parsed.vector[0] == 1.0)
+    }
+    None => fail("expected a point struct")
+  }
+}

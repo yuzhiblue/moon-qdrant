@@ -127,6 +127,38 @@ pub fn PointStruct::to_json(self : PointStruct) -> Json {
 }
 
 ///|
+/// Parse a point object as returned by the point read endpoint:
+/// `{ "id": 1, "vector": [...], "payload": {...} }`.
+pub fn PointStruct::from_json(json : Json) -> PointStruct? {
+  guard json is Object(members) else { return None }
+  let id = match members.get("id") {
+    Some(Number(n, ..)) => n.to_int()
+    _ => return None
+  }
+  let vector = match members.get("vector") {
+    Some(Array(arr)) =>
+      if arr.is_empty() {
+        return None
+      } else {
+        let vec : Array[Double] = []
+        for item in arr {
+          match item {
+            Number(n, ..) => vec.push(n)
+            _ => return None
+          }
+        }
+        vec
+      }
+    _ => return None
+  }
+  let payload = match members.get("payload") {
+    Some(p) => p
+    None => Json::object({})
+  }
+  Some({ id, vector, payload, })
+}
+
+///|
 /// Minimal parsed view of one collection, from GET /collections.
 pub struct CollectionSummary {
   name : String

@@ -51,7 +51,19 @@ let info = client.collection_info("demo")
 // does it exist?
 let exists = client.collection_exists("demo")
 
-// delete it
+// write some points
+client.upsert_points("demo", [
+  PointStruct::new(1, [0.1, 0.2, 0.3, 0.4], { "tag": "alpha" }),
+  PointStruct::new(2, [0.5, 0.6, 0.7, 0.8], { "tag": "beta" }),
+])
+
+// read one back
+let point = client.get_point("demo", 1)
+
+// delete points by id
+client.delete_points("demo", [2])
+
+// drop the collection
 client.delete_collection("demo")
 ```
 
@@ -71,7 +83,9 @@ Implemented:
 - [x] `GET /collections/{name}` collection info
 - [x] `DELETE /collections/{name}` delete collection
 - [x] `GET /collections/{name}/exists` collection existence check
-- [ ] point upsert / delete / get
+- [x] `PUT /collections/{name}/points` upsert points
+- [x] `GET /collections/{name}/points/{id}` get a point
+- [x] `POST /collections/{name}/points/delete` delete points by id
 - [ ] vector search with payload filters
 - [ ] batch operations
 - [ ] unified `VectorProvider` trait (extensible to other vector services)

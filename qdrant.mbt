@@ -177,3 +177,71 @@ pub async fn QdrantClient::collection_exists(
     raise Failure("Qdrant API error " + code.to_string())
   }
 }
+
+///|
+/// Upsert points into a collection via `PUT /collections/{name}/points`.
+/// The call waits for the operation to be applied before returning.
+pub async fn QdrantClient::upsert_points(
+  self : QdrantClient,
+  name : String,
+  points : Array[PointStruct],
+) -> Unit {
+  let path = "/collections/" + name + "/points?wait=true"
+  let point_json : Array[Json] = []
+  for p in points {
+    point_json.push(p.to_json())
+  }
+  let body : Json = { "points": Json::array(point_json) }
+  let json = self.request_json(Put, path, Some(body))
+  ignore(json)
+}
+
+///|
+/// Fetch a single point via `GET /collections/{name}/points/{id}`.
+/// Returns None when the point does not exist (404).
+pub async fn QdrantClient::get_point(
+  self : QdrantClient,
+  name : String,
+  id : Int,
+) -> PointStruct? {
+  let path = "/collections/" +
+    name +
+    "/points/" +
+    id.to_string() +
+    "?with_payload=true&with_vector=true"
+  let (code, json) = self.send(Get, path, None)
+  if code >= 200 && code < 300 {
+    match json {
+      Object(members) =>
+        match members.get("result") {
+          Some(result) => PointStruct::from_json(result)
+          None => None
+        }
+      _ => None
+    }
+  } else if code == 404 {
+    None
+  } else {
+    raise Failure(
+      "Qdrant API error " + code.to_string() + ": " + json.stringify(),
+    )
+  }
+}
+
+///|
+/// Delete points by id via `POST /collections/{name}/points/delete`.
+/// The call waits for the operation to be applied before returning.
+pub async fn QdrantClient::delete_points(
+  self : QdrantClient,
+  name : String,
+  ids : Array[Int],
+) -> Unit {
+  let path = "/collections/" + name + "/points/delete?wait=true"
+  let id_json : Array[Json] = []
+  for id in ids {
+    id_json.push(Json::number(id.to_double()))
+  }
+  let body : Json = { "points": Json::array(id_json) }
+  let json = self.request_json(Post, path, Some(body))
+  ignore(json)
+}
