@@ -60,6 +60,17 @@ client.upsert_points("demo", [
 // read one back
 let point = client.get_point("demo", 1)
 
+// search for the most similar points
+let hits = client.search_points("demo", [0.1, 0.2, 0.3, 0.4], limit=2)
+
+// search with a payload filter
+let filtered = client.search_points(
+  "demo",
+  [0.1, 0.2, 0.3, 0.4],
+  limit=2,
+  filter={ "must": [{ "key": "tag", "match": { "value": "alpha" } }] },
+)
+
 // delete points by id
 client.delete_points("demo", [2])
 
@@ -86,7 +97,7 @@ Implemented:
 - [x] `PUT /collections/{name}/points` upsert points
 - [x] `GET /collections/{name}/points/{id}` get a point
 - [x] `POST /collections/{name}/points/delete` delete points by id
-- [ ] vector search with payload filters
+- [x] `POST /collections/{name}/points/search` vector search with payload filters
 - [ ] batch operations
 - [ ] unified `VectorProvider` trait (extensible to other vector services)
 

@@ -245,3 +245,40 @@ pub async fn QdrantClient::delete_points(
   let json = self.request_json(Post, path, Some(body))
   ignore(json)
 }
+
+///|
+/// Search the most similar points via `POST /collections/{name}/points/search`.
+///
+/// `limit` bounds how many hits are returned. `filter` is an optional
+/// Qdrant filter JSON object, for example
+/// `{ "must": [{ "key": "tag", "match": { "value": "alpha" } }] }`.
+pub async fn QdrantClient::search_points(
+  self : QdrantClient,
+  name : String,
+  vector : Array[Double],
+  limit : Int,
+  filter? : Json? = None,
+) -> Array[ScoredPoint] {
+  let path = "/collections/" +
+    name +
+    "/points/search?limit=" +
+    limit.to_string()
+  let vec : Array[Json] = []
+  for x in vector {
+    vec.push(Json::number(x))
+  }
+  let body : Json = match filter {
+    Some(f) =>
+      {
+        "vector": Json::array(vec),
+        "with_payload": Json::boolean(true),
+        "filter": f,
+      }
+    None => { "vector": Json::array(vec), "with_payload": Json::boolean(true) }
+  }
+  let json = self.request_json(Post, path, Some(body))
+  match parse_search_result(json) {
+    Some(hits) => hits
+    None => raise Failure("unexpected search response: " + json.stringify())
+  }
+}

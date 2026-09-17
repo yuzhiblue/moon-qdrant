@@ -240,3 +240,55 @@ pub fn CollectionInfo::from_json(json : Json) -> CollectionInfo? {
   }
   Some({ status, points_count, vectors, })
 }
+
+///|
+/// One hit returned by the search endpoint: a point id, its similarity score,
+/// and the payload attached to the point (when requested).
+pub struct ScoredPoint {
+  id : Int
+  score : Double
+  payload : Json?
+}
+
+///|
+/// Parse a search hit object:
+/// `{ "id": 1, "score": 0.99, "payload": {...} }`.
+pub fn ScoredPoint::from_json(json : Json) -> ScoredPoint? {
+  guard json is Object(members) else { return None }
+  let id = match members.get("id") {
+    Some(Number(n, ..)) => n.to_int()
+    _ => return None
+  }
+  let score = match members.get("score") {
+    Some(Number(n, ..)) => n
+    _ => return None
+  }
+  let payload = match members.get("payload") {
+    Some(p) => Some(p)
+    None => None
+  }
+  Some({ id, score, payload, })
+}
+
+///|
+/// Parse the `result` array of a search response into scored points.
+/// Returns None when the response does not match the expected shape.
+pub fn parse_search_result(json : Json) -> Array[ScoredPoint]? {
+  match json {
+    Object(members) =>
+      match members.get("result") {
+        Some(Array(arr)) => {
+          let out : Array[ScoredPoint] = []
+          for item in arr {
+            match ScoredPoint::from_json(item) {
+              Some(hit) => out.push(hit)
+              None => return None
+            }
+          }
+          Some(out)
+        }
+        _ => None
+      }
+    _ => None
+  }
+}

@@ -201,3 +201,53 @@ test "point struct round-trips through json" {
     None => fail("expected a point struct")
   }
 }
+
+///|
+test "scored point parses a search hit" {
+  let json : Json = {
+    "id": 1,
+    "version": 0,
+    "score": 0.99,
+    "payload": { "tag": "alpha" },
+  }
+  match ScoredPoint::from_json(json) {
+    Some(hit) => {
+      assert_true(hit.id == 1)
+      assert_true(hit.score == 0.99)
+      match hit.payload {
+        Some(p) =>
+          match field(p, "tag") {
+            Some(String(s)) => assert_true(s == "alpha")
+            _ => fail("expected payload tag")
+          }
+        None => fail("expected a payload")
+      }
+    }
+    None => fail("expected a scored point")
+  }
+}
+
+///|
+test "search result parses the standard qdrant response" {
+  let json : Json = {
+    "result": [
+      { "id": 1, "version": 0, "score": 0.99, "payload": { "tag": "alpha" } },
+      { "id": 2, "version": 0, "score": 0.50, "payload": null },
+    ],
+    "status": "ok",
+    "time": 0.001,
+  }
+  match parse_search_result(json) {
+    Some(hits) => {
+      assert_true(hits.length() == 2)
+      assert_true(hits[0].id == 1)
+      assert_true(hits[0].score == 0.99)
+      assert_true(hits[1].id == 2)
+      match hits[1].payload {
+        Some(Null) => ()
+        _ => fail("expected a null payload")
+      }
+    }
+    None => fail("expected a search result")
+  }
+}
