@@ -359,3 +359,21 @@ test "scroll result treats missing next_page_offset as None" {
     None => fail("expected a scroll result")
   }
 }
+
+///|
+test "count result parses the point count" {
+  let json : Json = { "count": 42 }
+  match parse_count_result(json) {
+    Some(42) => ()
+    _ => fail("expected count = 42")
+  }
+}
+
+///|
+test "count result rejects a missing count field" {
+  let json : Json = { "status": "ok" }
+  match parse_count_result(json) {
+    None => ()
+    _ => fail("expected None when count is missing")
+  }
+}

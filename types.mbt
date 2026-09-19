@@ -507,3 +507,17 @@ pub fn ScrollResult::from_json(json : Json) -> ScrollResult? {
   }
   Some({ points, next_page_offset, })
 }
+
+///|
+/// Parse the `result` object of a count response: `{ "count": 42 }`.
+/// Returns None when the shape does not match.
+pub fn parse_count_result(json : Json) -> Int? {
+  match json {
+    Object(members) =>
+      match members.get("count") {
+        Some(Number(n, ..)) => Some(n.to_int())
+        _ => None
+      }
+    _ => None
+  }
+}

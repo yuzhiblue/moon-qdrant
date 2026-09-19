@@ -367,3 +367,40 @@ pub async fn QdrantClient::scroll_points(
     _ => raise Failure("unexpected scroll response: " + json.stringify())
   }
 }
+
+///|
+/// Count points in a collection via
+/// `POST /collections/{name}/points/count`.
+///
+/// When `exact` is false (default) Qdrant answers with an estimate from
+/// the index; pass `exact=true` for an exact count, which is slower on
+/// large collections. An optional filter narrows the counted subset.
+pub async fn QdrantClient::count_points(
+  self : QdrantClient,
+  name : String,
+  filter? : Filter? = None,
+  exact? : Bool = false,
+) -> Int {
+  let path = "/collections/" + name + "/points/count"
+  let members : Map[String, Json] = Map([])
+  members["exact"] = Json::boolean(exact)
+  match filter {
+    Some(f) => members["filter"] = f.to_json()
+    None => ()
+  }
+  let body = Json::object(members)
+  let json = self.request_json(Post, path, Some(body))
+  match json {
+    Object(o) =>
+      match o.get("result") {
+        Some(result) =>
+          match parse_count_result(result) {
+            Some(n) => n
+            None =>
+              raise Failure("unexpected count response: " + json.stringify())
+          }
+        None => raise Failure("unexpected count response: " + json.stringify())
+      }
+    _ => raise Failure("unexpected count response: " + json.stringify())
+  }
+}

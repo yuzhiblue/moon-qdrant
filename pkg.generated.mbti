@@ -6,6 +6,8 @@ import {
 }
 
 // Values
+pub fn parse_count_result(Json) -> Int?
+
 pub fn parse_search_result(Json) -> Array[ScoredPoint]?
 
 pub fn vector_to_json(Array[Double]) -> Json
@@ -87,6 +89,7 @@ pub struct QdrantClient {
 }
 pub async fn QdrantClient::collection_exists(Self, String) -> Bool
 pub async fn QdrantClient::collection_info(Self, String) -> CollectionInfo
+pub async fn QdrantClient::count_points(Self, String, filter? : Filter?, exact? : Bool) -> Int
 pub async fn QdrantClient::create_collection(Self, String, CollectionConfig) -> Unit
 pub async fn QdrantClient::delete_collection(Self, String) -> Unit
 pub async fn QdrantClient::delete_points(Self, String, Array[Int]) -> Unit
