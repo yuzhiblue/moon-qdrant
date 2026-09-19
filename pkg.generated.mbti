@@ -94,6 +94,7 @@ pub async fn QdrantClient::get_point(Self, String, Int) -> PointStruct?
 pub async fn QdrantClient::health(Self) -> Bool
 pub async fn QdrantClient::list_collections(Self) -> Array[String]
 pub fn QdrantClient::new(String, api_key? : String?) -> Self
+pub async fn QdrantClient::scroll_points(Self, String, Int, filter? : Filter?, offset? : Int?) -> ScrollResult
 pub async fn QdrantClient::search_points(Self, String, Array[Double], Int, filter? : Json?) -> Array[ScoredPoint]
 pub async fn QdrantClient::search_points_with_filter(Self, String, Array[Double], Int, Filter) -> Array[ScoredPoint]
 pub async fn QdrantClient::upsert_points(Self, String, Array[PointStruct]) -> Unit
@@ -106,6 +107,12 @@ pub struct ScoredPoint {
   payload : Json?
 }
 pub fn ScoredPoint::from_json(Json) -> Self?
+
+pub struct ScrollResult {
+  points : Array[PointStruct]
+  next_page_offset : Int?
+}
+pub fn ScrollResult::from_json(Json) -> Self?
 
 pub struct VectorParams {
   size : Int

@@ -476,3 +476,34 @@ pub fn Filter::to_json(self : Filter) -> Json {
   }
   Json::object(members)
 }
+
+///|
+/// Result of `POST /collections/{name}/points/scroll`: the points on the
+/// current page, and the next page offset when more pages remain.
+pub struct ScrollResult {
+  points : Array[PointStruct]
+  next_page_offset : Int?
+}
+
+///|
+/// Parse the `result` object of a scroll response.
+pub fn ScrollResult::from_json(json : Json) -> ScrollResult? {
+  guard json is Object(members) else { return None }
+  let points_arr = match members.get("points") {
+    Some(Array(arr)) => arr
+    _ => return None
+  }
+  let points : Array[PointStruct] = []
+  for item in points_arr {
+    match PointStruct::from_json(item) {
+      Some(p) => points.push(p)
+      None => return None
+    }
+  }
+  let next_page_offset = match members.get("next_page_offset") {
+    Some(Number(n, ..)) => Some(n.to_int())
+    None => None
+    _ => None
+  }
+  Some({ points, next_page_offset, })
+}

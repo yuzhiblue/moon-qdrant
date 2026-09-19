@@ -319,3 +319,43 @@ test "empty filter serializes to an empty object" {
     _ => fail("expected an object")
   }
 }
+
+///|
+test "scroll result parses points and next page offset" {
+  let json : Json = {
+    "points": [
+      { "id": 1, "vector": [0.1, 0.2], "payload": { "tag": "a" } },
+      { "id": 2, "vector": [0.3, 0.4], "payload": {} },
+    ],
+    "next_page_offset": 5,
+  }
+  match ScrollResult::from_json(json) {
+    Some(page) => {
+      assert_true(page.points.length() == 2)
+      assert_true(page.points[0].id == 1)
+      assert_true(page.points[1].vector[1] == 0.4)
+      match page.next_page_offset {
+        Some(5) => ()
+        _ => fail("expected next_page_offset = 5")
+      }
+    }
+    None => fail("expected a scroll result")
+  }
+}
+
+///|
+test "scroll result treats missing next_page_offset as None" {
+  let json : Json = {
+    "points": [{ "id": 9, "vector": [0.5, 0.6], "payload": {} }],
+  }
+  match ScrollResult::from_json(json) {
+    Some(page) => {
+      assert_true(page.points.length() == 1)
+      match page.next_page_offset {
+        None => ()
+        _ => fail("expected no next page offset on the last page")
+      }
+    }
+    None => fail("expected a scroll result")
+  }
+}

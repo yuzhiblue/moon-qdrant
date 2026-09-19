@@ -323,3 +323,47 @@ pub async fn QdrantClient::search_points_with_filter(
 ) -> Array[ScoredPoint] {
   self.search_points(name, vector, limit, filter=Some(filter.to_json()))
 }
+
+///|
+/// Scroll through all points of a collection via
+/// `POST /collections/{name}/points/scroll`.
+///
+/// Returns one page of points together with `next_page_offset`, which is
+/// Some(offset) when more pages remain and None on the last page. Pass it
+/// back as `offset` to fetch the following page.
+pub async fn QdrantClient::scroll_points(
+  self : QdrantClient,
+  name : String,
+  limit : Int,
+  filter? : Filter? = None,
+  offset? : Int? = None,
+) -> ScrollResult {
+  let path = "/collections/" + name + "/points/scroll"
+  let members : Map[String, Json] = Map([])
+  members["limit"] = Json::number(limit.to_double())
+  members["with_payload"] = Json::boolean(true)
+  members["with_vector"] = Json::boolean(true)
+  match filter {
+    Some(f) => members["filter"] = f.to_json()
+    None => ()
+  }
+  match offset {
+    Some(o) => members["offset"] = Json::number(o.to_double())
+    None => ()
+  }
+  let body = Json::object(members)
+  let json = self.request_json(Post, path, Some(body))
+  match json {
+    Object(o) =>
+      match o.get("result") {
+        Some(result) =>
+          match ScrollResult::from_json(result) {
+            Some(page) => page
+            None =>
+              raise Failure("unexpected scroll response: " + json.stringify())
+          }
+        None => raise Failure("unexpected scroll response: " + json.stringify())
+      }
+    _ => raise Failure("unexpected scroll response: " + json.stringify())
+  }
+}
