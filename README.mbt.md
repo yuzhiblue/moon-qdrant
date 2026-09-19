@@ -108,7 +108,13 @@ Implemented:
 - [x] `GET /collections/{name}/points/{id}` get a point
 - [x] `POST /collections/{name}/points/delete` delete points by id
 - [x] `POST /collections/{name}/points/search` vector search with payload filters
+- [x] typed filter DSL (`Condition` / `Filter` builder over must/should/must_not)
 - [x] `PUT /collections/{name}/points/batch` batch upsert
+- [x] `POST /collections/{name}/points/scroll` paginated point scrolling
+- [x] `POST /collections/{name}/points/count` point count (exact or estimated)
+- [x] `POST /collections/{name}/points` batch retrieve by ids
+- [x] `POST /collections/{name}/points/delete` delete points by filter
+- [x] `POST /collections/aliases` / `GET /collections/aliases` collection aliases
 - [x] unified `VectorProvider` trait (extensible to other vector services)
 
 ## Development

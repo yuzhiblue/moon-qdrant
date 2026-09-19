@@ -6,7 +6,25 @@ All notable changes to moon-qdrant are documented here. The format follows
 
 ## [Unreleased]
 
-- Planned: publish to mooncakes.io, API docs polish.
+- Planned: API docs polish.
+
+## [0.2.0] - 2026-09-20
+
+### Added
+
+- Typed payload filter DSL: `Condition` (match_value / match_keyword /
+  match_values / range / is_empty / is_null) and a `Filter` builder over
+  `must` / `should` / `must_not`, with `search_points_with_filter` as the
+  type-safe search entry point;
+- `scroll_points` — `POST /collections/{name}/points/scroll`, paginated
+  point listing with filter and offset;
+- `count_points` — `POST /collections/{name}/points/count`, exact or
+  estimated count with optional filter;
+- `retrieve_points` — `POST /collections/{name}/points`, batch fetch by ids;
+- `delete_points_by_filter` — bulk delete via a `Filter`;
+- `create_alias` / `delete_alias` / `list_aliases` — collection alias
+  management via `/collections/aliases`;
+- The end-to-end demo now exercises all of the above.
 
 ## [0.1.0] - 2026-09-17
 
