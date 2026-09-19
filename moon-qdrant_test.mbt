@@ -251,3 +251,71 @@ test "search result parses the standard qdrant response" {
     None => fail("expected a search result")
   }
 }
+
+///|
+test "filter serializes must/should/must_not clause groups" {
+  let filter = Filter::new()
+    .must(Condition::match_keyword("tag", "alpha"))
+    .must(Condition::match_value("active", Json::boolean(true)))
+    .must_not(Condition::is_null("deprecated"))
+  let json = filter.to_json()
+  match field(json, "must") {
+    Some(Array(musts)) => assert_true(musts.length() == 2)
+    _ => fail("expected must array")
+  }
+  match field(json, "should") {
+    None => ()
+    _ => fail("expected no should group")
+  }
+  match field(json, "must_not") {
+    Some(Array(nots)) => assert_true(nots.length() == 1)
+    _ => fail("expected must_not array")
+  }
+}
+
+///|
+test "range condition omits null bounds" {
+  let c = Condition::range("age", gte=Some(18.0), lt=Some(65.0))
+  let json = c.to_json()
+  match field(json, "range") {
+    Some(rng) => {
+      match field(rng, "gte") {
+        Some(Number(n, ..)) => assert_true(n == 18.0)
+        _ => fail("expected gte")
+      }
+      match field(rng, "lte") {
+        None => ()
+        _ => fail("lte should be omitted")
+      }
+      match field(rng, "lt") {
+        Some(Number(n, ..)) => assert_true(n == 65.0)
+        _ => fail("expected lt")
+      }
+    }
+    _ => fail("expected range object")
+  }
+}
+
+///|
+test "match values serializes to an any array" {
+  let values : Array[Json] = [Json::string("a"), Json::string("b")]
+  let c = Condition::match_values("tag", values)
+  let json = c.to_json()
+  match field(json, "match") {
+    Some(m) =>
+      match field(m, "any") {
+        Some(Array(arr)) => assert_true(arr.length() == 2)
+        _ => fail("expected any array")
+      }
+    _ => fail("expected match object")
+  }
+}
+
+///|
+test "empty filter serializes to an empty object" {
+  let json = Filter::new().to_json()
+  match json {
+    Object(members) => assert_true(members.is_empty())
+    _ => fail("expected an object")
+  }
+}

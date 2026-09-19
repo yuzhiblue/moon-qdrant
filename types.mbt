@@ -293,3 +293,186 @@ pub fn parse_search_result(json : Json) -> Array[ScoredPoint]? {
     _ => None
   }
 }
+
+///|
+/// A single payload filter condition, in the subset of Qdrant's filter DSL
+/// that covers the common exact-match, set-membership, range and existence
+/// cases. Construct one with the `Condition::match_*` / `Condition::range_*`
+/// helpers and combine them inside a `Filter`.
+pub(all) enum Condition {
+  MatchValue(String, Json)
+  MatchKeyword(String, String)
+  MatchValues(String, Array[Json])
+  Range(String, Double?, Double?, Double?, Double?)
+  IsEmpty(String)
+  IsNull(String)
+}
+
+///|
+/// Convenience constructor: payload field equals a single JSON value.
+pub fn Condition::match_value(field : String, value : Json) -> Condition {
+  MatchValue(field, value)
+}
+
+///|
+/// Convenience constructor: payload field equals a keyword string.
+pub fn Condition::match_keyword(field : String, keyword : String) -> Condition {
+  MatchKeyword(field, keyword)
+}
+
+///|
+/// Convenience constructor: payload field equals one of the given values.
+pub fn Condition::match_values(
+  field : String,
+  values : Array[Json],
+) -> Condition {
+  MatchValues(field, values)
+}
+
+///|
+/// Convenience constructor: numeric range on a payload field.
+/// All four bounds are optional; omitted bounds are dropped from the
+/// serialized filter.
+pub fn Condition::range(
+  field : String,
+  gte? : Double? = None,
+  lte? : Double? = None,
+  gt? : Double? = None,
+  lt? : Double? = None,
+) -> Condition {
+  Range(field, gte, lte, gt, lt)
+}
+
+///|
+/// Convenience constructor: payload field has no value.
+pub fn Condition::is_empty(field : String) -> Condition {
+  IsEmpty(field)
+}
+
+///|
+/// Convenience constructor: payload field is explicitly null.
+pub fn Condition::is_null(field : String) -> Condition {
+  IsNull(field)
+}
+
+///|
+/// Serialize a range condition, omitting bounds that are None.
+fn range_bounds_json(
+  gte : Double?,
+  lte : Double?,
+  gt : Double?,
+  lt : Double?,
+) -> Json {
+  let members : Map[String, Json] = Map([])
+  match gte {
+    Some(v) => members["gte"] = Json::number(v)
+    None => ()
+  }
+  match lte {
+    Some(v) => members["lte"] = Json::number(v)
+    None => ()
+  }
+  match gt {
+    Some(v) => members["gt"] = Json::number(v)
+    None => ()
+  }
+  match lt {
+    Some(v) => members["lt"] = Json::number(v)
+    None => ()
+  }
+  Json::object(members)
+}
+
+///|
+/// Serialize a Condition to its Qdrant filter JSON fragment.
+pub fn Condition::to_json(self : Condition) -> Json {
+  match self {
+    MatchValue(field, value) =>
+      { "key": Json::string(field), "match": { "value": value } }
+    MatchKeyword(field, keyword) =>
+      {
+        "key": Json::string(field),
+        "match": { "keyword": Json::string(keyword) },
+      }
+    MatchValues(field, values) =>
+      { "key": Json::string(field), "match": { "any": Json::array(values) } }
+    Range(field, gte, lte, gt, lt) =>
+      {
+        "key": Json::string(field),
+        "range": range_bounds_json(gte, lte, gt, lt),
+      }
+    IsEmpty(field) => { "is_empty": { "key": Json::string(field) } }
+    IsNull(field) => { "is_null": { "key": Json::string(field) } }
+  }
+}
+
+///|
+/// A Qdrant filter, composed of three conjunctive clause groups.
+///
+/// Empty clause groups are omitted from the serialized JSON. Use
+/// `Filter::new()` to start, then chain `must` / `should` / `must_not`
+/// to add conditions.
+pub struct Filter {
+  must : Array[Condition]
+  should : Array[Condition]
+  must_not : Array[Condition]
+}
+
+///|
+/// Create an empty filter.
+pub fn Filter::new() -> Filter {
+  { must: [], should: [], must_not: [], }
+}
+
+///|
+/// Append a condition to the `must` clause group (all must hold).
+pub fn Filter::must(self : Filter, c : Condition) -> Filter {
+  let arr = self.must.copy()
+  arr.push(c)
+  { ..self, must: arr, }
+}
+
+///|
+/// Append a condition to the `should` clause group (any may hold).
+pub fn Filter::should(self : Filter, c : Condition) -> Filter {
+  let arr = self.should.copy()
+  arr.push(c)
+  { ..self, should: arr, }
+}
+
+///|
+/// Append a condition to the `must_not` clause group (none may hold).
+pub fn Filter::must_not(self : Filter, c : Condition) -> Filter {
+  let arr = self.must_not.copy()
+  arr.push(c)
+  { ..self, must_not: arr, }
+}
+
+///|
+/// Serialize the filter to Qdrant's filter JSON. Empty clause groups are
+/// omitted so the serialized object only contains non-empty groups.
+pub fn Filter::to_json(self : Filter) -> Json {
+  let members : Map[String, Json] = Map([])
+  if !self.must.is_empty() {
+    let arr : Array[Json] = []
+    for c in self.must {
+      arr.push(c.to_json())
+    }
+    members["must"] = Json::array(arr)
+  }
+  if !self.should.is_empty() {
+    let arr : Array[Json] = []
+    for c in self.should {
+      arr.push(c.to_json())
+    }
+    members["should"] = Json::array(arr)
+  }
+  if !self.must_not.is_empty() {
+    let arr : Array[Json] = []
+    for c in self.must_not {
+      arr.push(c.to_json())
+    }
+    members["must_not"] = Json::array(arr)
+  }
+  Json::object(members)
+}

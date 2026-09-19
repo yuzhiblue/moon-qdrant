@@ -36,6 +36,22 @@ pub struct CollectionSummary {
 }
 pub fn CollectionSummary::from_json(Json) -> Self?
 
+pub(all) enum Condition {
+  MatchValue(String, Json)
+  MatchKeyword(String, String)
+  MatchValues(String, Array[Json])
+  Range(String, Double?, Double?, Double?, Double?)
+  IsEmpty(String)
+  IsNull(String)
+}
+pub fn Condition::is_empty(String) -> Self
+pub fn Condition::is_null(String) -> Self
+pub fn Condition::match_keyword(String, String) -> Self
+pub fn Condition::match_value(String, Json) -> Self
+pub fn Condition::match_values(String, Array[Json]) -> Self
+pub fn Condition::range(String, gte? : Double?, lte? : Double?, gt? : Double?, lt? : Double?) -> Self
+pub fn Condition::to_json(Self) -> Json
+
 pub(all) enum Distance {
   Cosine
   Euclid
@@ -43,6 +59,17 @@ pub(all) enum Distance {
 }
 pub fn Distance::from_wire(String) -> Self?
 pub fn Distance::to_wire(Self) -> String
+
+pub struct Filter {
+  must : Array[Condition]
+  should : Array[Condition]
+  must_not : Array[Condition]
+}
+pub fn Filter::must(Self, Condition) -> Self
+pub fn Filter::must_not(Self, Condition) -> Self
+pub fn Filter::new() -> Self
+pub fn Filter::should(Self, Condition) -> Self
+pub fn Filter::to_json(Self) -> Json
 
 pub struct PointStruct {
   id : Int
@@ -68,6 +95,7 @@ pub async fn QdrantClient::health(Self) -> Bool
 pub async fn QdrantClient::list_collections(Self) -> Array[String]
 pub fn QdrantClient::new(String, api_key? : String?) -> Self
 pub async fn QdrantClient::search_points(Self, String, Array[Double], Int, filter? : Json?) -> Array[ScoredPoint]
+pub async fn QdrantClient::search_points_with_filter(Self, String, Array[Double], Int, Filter) -> Array[ScoredPoint]
 pub async fn QdrantClient::upsert_points(Self, String, Array[PointStruct]) -> Unit
 pub async fn QdrantClient::upsert_points_batch(Self, String, Array[PointStruct]) -> Unit
 pub impl VectorProvider for QdrantClient

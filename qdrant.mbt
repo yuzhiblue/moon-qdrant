@@ -309,3 +309,17 @@ pub async fn QdrantClient::search_points(
     None => raise Failure("unexpected search response: " + json.stringify())
   }
 }
+
+///|
+/// Search with a type-safe `Filter` built from `Condition` helpers.
+/// This is the preferred way to build payload filters; the raw-`Json`
+/// `search_points` variant remains for advanced cases.
+pub async fn QdrantClient::search_points_with_filter(
+  self : QdrantClient,
+  name : String,
+  vector : Array[Double],
+  limit : Int,
+  filter : Filter,
+) -> Array[ScoredPoint] {
+  self.search_points(name, vector, limit, filter=Some(filter.to_json()))
+}
