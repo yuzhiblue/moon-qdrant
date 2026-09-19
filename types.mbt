@@ -521,3 +521,26 @@ pub fn parse_count_result(json : Json) -> Int? {
     _ => None
   }
 }
+
+///|
+/// Parse the `result` array of a retrieve response into points.
+/// Returns None when the response does not match the expected shape.
+pub fn parse_retrieve_result(json : Json) -> Array[PointStruct]? {
+  match json {
+    Object(members) =>
+      match members.get("result") {
+        Some(Array(arr)) => {
+          let out : Array[PointStruct] = []
+          for item in arr {
+            match PointStruct::from_json(item) {
+              Some(p) => out.push(p)
+              None => return None
+            }
+          }
+          Some(out)
+        }
+        _ => None
+      }
+    _ => None
+  }
+}

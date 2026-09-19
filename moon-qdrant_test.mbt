@@ -377,3 +377,31 @@ test "count result rejects a missing count field" {
     _ => fail("expected None when count is missing")
   }
 }
+
+///|
+test "retrieve result parses multiple points" {
+  let json : Json = {
+    "result": [
+      { "id": 1, "vector": [0.1, 0.2], "payload": {} },
+      { "id": 2, "vector": [0.3, 0.4], "payload": { "k": "v" } },
+    ],
+    "status": "ok",
+  }
+  match parse_retrieve_result(json) {
+    Some(points) => {
+      assert_true(points.length() == 2)
+      assert_true(points[0].id == 1)
+      assert_true(points[1].id == 2)
+    }
+    None => fail("expected retrieved points")
+  }
+}
+
+///|
+test "retrieve result accepts an empty result array" {
+  let json : Json = { "result": [] }
+  match parse_retrieve_result(json) {
+    Some(points) => assert_true(points.is_empty())
+    None => fail("expected an empty array")
+  }
+}

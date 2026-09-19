@@ -404,3 +404,31 @@ pub async fn QdrantClient::count_points(
     _ => raise Failure("unexpected count response: " + json.stringify())
   }
 }
+
+///|
+/// Fetch several points at once by id via
+/// `POST /collections/{name}/points`.
+///
+/// Points that do not exist are simply omitted from the returned list;
+/// check the length against the requested ids to detect missing ones.
+pub async fn QdrantClient::retrieve_points(
+  self : QdrantClient,
+  name : String,
+  ids : Array[Int],
+) -> Array[PointStruct] {
+  let path = "/collections/" + name + "/points"
+  let id_json : Array[Json] = []
+  for id in ids {
+    id_json.push(Json::number(id.to_double()))
+  }
+  let body : Json = {
+    "ids": Json::array(id_json),
+    "with_payload": Json::boolean(true),
+    "with_vector": Json::boolean(true),
+  }
+  let json = self.request_json(Post, path, Some(body))
+  match parse_retrieve_result(json) {
+    Some(points) => points
+    None => raise Failure("unexpected retrieve response: " + json.stringify())
+  }
+}

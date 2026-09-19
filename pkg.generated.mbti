@@ -8,6 +8,8 @@ import {
 // Values
 pub fn parse_count_result(Json) -> Int?
 
+pub fn parse_retrieve_result(Json) -> Array[PointStruct]?
+
 pub fn parse_search_result(Json) -> Array[ScoredPoint]?
 
 pub fn vector_to_json(Array[Double]) -> Json
@@ -97,6 +99,7 @@ pub async fn QdrantClient::get_point(Self, String, Int) -> PointStruct?
 pub async fn QdrantClient::health(Self) -> Bool
 pub async fn QdrantClient::list_collections(Self) -> Array[String]
 pub fn QdrantClient::new(String, api_key? : String?) -> Self
+pub async fn QdrantClient::retrieve_points(Self, String, Array[Int]) -> Array[PointStruct]
 pub async fn QdrantClient::scroll_points(Self, String, Int, filter? : Filter?, offset? : Int?) -> ScrollResult
 pub async fn QdrantClient::search_points(Self, String, Array[Double], Int, filter? : Json?) -> Array[ScoredPoint]
 pub async fn QdrantClient::search_points_with_filter(Self, String, Array[Double], Int, Filter) -> Array[ScoredPoint]
