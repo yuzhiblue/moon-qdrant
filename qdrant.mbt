@@ -432,3 +432,57 @@ pub async fn QdrantClient::retrieve_points(
     None => raise Failure("unexpected retrieve response: " + json.stringify())
   }
 }
+
+///|
+/// Apply alias change actions via `POST /collections/aliases`.
+async fn QdrantClient::apply_alias_actions(
+  self : QdrantClient,
+  actions : Array[Json],
+) -> Unit {
+  let body : Json = { "actions": Json::array(actions) }
+  let json = self.request_json(Post, "/collections/aliases", Some(body))
+  ignore(json)
+}
+
+///|
+/// Create an alias for a collection: `POST /collections/aliases` with a
+/// `create_alias` action.
+pub async fn QdrantClient::create_alias(
+  self : QdrantClient,
+  alias_name : String,
+  collection : String,
+) -> Unit {
+  let action : Json = {
+    "action": Json::string("create_alias"),
+    "create_alias": {
+      "collection_name": Json::string(collection),
+      "alias_name": Json::string(alias_name),
+    },
+  }
+  self.apply_alias_actions([action])
+}
+
+///|
+/// Delete an alias: `POST /collections/aliases` with a `delete_alias` action.
+pub async fn QdrantClient::delete_alias(
+  self : QdrantClient,
+  alias_name : String,
+) -> Unit {
+  let action : Json = {
+    "action": Json::string("delete_alias"),
+    "delete_alias": { "alias_name": Json::string(alias_name) },
+  }
+  self.apply_alias_actions([action])
+}
+
+///|
+/// List all collection aliases via `GET /collections/aliases`.
+pub async fn QdrantClient::list_aliases(
+  self : QdrantClient,
+) -> Array[AliasInfo] {
+  let json = self.request_json(Get, "/collections/aliases", None)
+  match parse_aliases(json) {
+    Some(aliases) => aliases
+    None => raise Failure("unexpected aliases response: " + json.stringify())
+  }
+}

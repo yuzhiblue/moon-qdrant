@@ -544,3 +544,52 @@ pub fn parse_retrieve_result(json : Json) -> Array[PointStruct]? {
     _ => None
   }
 }
+
+///|
+/// One collection alias entry, as returned by
+/// GET /collections/aliases.
+pub struct AliasInfo {
+  alias_name : String
+  collection_name : String
+}
+
+///|
+/// Parse one alias entry: `{ "alias_name": "prod", "collection_name": "demo" }`.
+pub fn AliasInfo::from_json(json : Json) -> AliasInfo? {
+  guard json is Object(members) else { return None }
+  let alias_name = match members.get("alias_name") {
+    Some(String(s)) => s
+    _ => return None
+  }
+  let collection_name = match members.get("collection_name") {
+    Some(String(s)) => s
+    _ => return None
+  }
+  Some({ alias_name, collection_name, })
+}
+
+///|
+/// Parse the `result.aliases` array of GET /collections/aliases.
+pub fn parse_aliases(json : Json) -> Array[AliasInfo]? {
+  match json {
+    Object(members) =>
+      match members.get("result") {
+        Some(Object(result)) =>
+          match result.get("aliases") {
+            Some(Array(arr)) => {
+              let out : Array[AliasInfo] = []
+              for item in arr {
+                match AliasInfo::from_json(item) {
+                  Some(a) => out.push(a)
+                  None => return None
+                }
+              }
+              Some(out)
+            }
+            _ => None
+          }
+        _ => None
+      }
+    _ => None
+  }
+}

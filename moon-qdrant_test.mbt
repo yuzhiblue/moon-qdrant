@@ -405,3 +405,33 @@ test "retrieve result accepts an empty result array" {
     None => fail("expected an empty array")
   }
 }
+
+///|
+test "aliases response parses alias entries" {
+  let json : Json = {
+    "result": {
+      "aliases": [
+        { "alias_name": "prod", "collection_name": "demo" },
+        { "alias_name": "beta", "collection_name": "demo-v2" },
+      ],
+    },
+    "status": "ok",
+  }
+  match parse_aliases(json) {
+    Some(aliases) => {
+      assert_true(aliases.length() == 2)
+      assert_true(aliases[0].alias_name == "prod")
+      assert_true(aliases[1].collection_name == "demo-v2")
+    }
+    None => fail("expected aliases")
+  }
+}
+
+///|
+test "aliases response accepts an empty alias list" {
+  let json : Json = { "result": { "aliases": [] } }
+  match parse_aliases(json) {
+    Some(aliases) => assert_true(aliases.is_empty())
+    None => fail("expected an empty alias list")
+  }
+}
