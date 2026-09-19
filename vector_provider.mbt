@@ -29,6 +29,13 @@ pub trait VectorProvider {
     limit : Int,
     filter? : Json?,
   ) -> Array[ScoredPoint]
+  async fn search_with_filter(
+    self : Self,
+    name : String,
+    vector : Array[Double],
+    limit : Int,
+    filter : Filter,
+  ) -> Array[ScoredPoint]
 }
 
 ///|
@@ -81,6 +88,19 @@ pub impl VectorProvider for QdrantClient with fn search_points(
     name,
     vector,
     limit,
+    // trait optional param arrives as Json??; unwrap the outer layer so the
+    // inner Json? matches search_points' own optional parameter.
     filter=filter.unwrap_or(None),
   )
+}
+
+///|
+pub impl VectorProvider for QdrantClient with fn search_with_filter(
+  self,
+  name,
+  vector,
+  limit,
+  filter,
+) {
+  QdrantClient::search_points_with_filter(self, name, vector, limit, filter)
 }

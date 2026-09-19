@@ -593,3 +593,39 @@ pub fn parse_aliases(json : Json) -> Array[AliasInfo]? {
     _ => None
   }
 }
+
+///|
+/// Build the request body for POST /collections/{name}/points/scroll.
+/// `with_payload` and `with_vector` are always requested because callers
+/// get full PointStructs back.
+pub fn scroll_request_body(
+  limit : Int,
+  filter : Filter?,
+  offset : Int?,
+) -> Json {
+  let members : Map[String, Json] = Map([])
+  members["limit"] = Json::number(limit.to_double())
+  members["with_payload"] = Json::boolean(true)
+  members["with_vector"] = Json::boolean(true)
+  match filter {
+    Some(f) => members["filter"] = f.to_json()
+    None => ()
+  }
+  match offset {
+    Some(o) => members["offset"] = Json::number(o.to_double())
+    None => ()
+  }
+  Json::object(members)
+}
+
+///|
+/// Build the request body for POST /collections/{name}/points/count.
+pub fn count_request_body(filter : Filter?, exact : Bool) -> Json {
+  let members : Map[String, Json] = Map([])
+  members["exact"] = Json::boolean(exact)
+  match filter {
+    Some(f) => members["filter"] = f.to_json()
+    None => ()
+  }
+  Json::object(members)
+}

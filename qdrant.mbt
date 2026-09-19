@@ -36,7 +36,7 @@ pub fn QdrantClient::new(
 
 ///|
 /// Join a path fragment onto the base URL, keeping a single slash between them.
-fn join_url(base : String, path : String) -> String {
+pub fn join_url(base : String, path : String) -> String {
   if path.has_prefix("/") {
     base + path
   } else {
@@ -339,19 +339,7 @@ pub async fn QdrantClient::scroll_points(
   offset? : Int? = None,
 ) -> ScrollResult {
   let path = "/collections/" + name + "/points/scroll"
-  let members : Map[String, Json] = Map([])
-  members["limit"] = Json::number(limit.to_double())
-  members["with_payload"] = Json::boolean(true)
-  members["with_vector"] = Json::boolean(true)
-  match filter {
-    Some(f) => members["filter"] = f.to_json()
-    None => ()
-  }
-  match offset {
-    Some(o) => members["offset"] = Json::number(o.to_double())
-    None => ()
-  }
-  let body = Json::object(members)
+  let body = scroll_request_body(limit, filter, offset)
   let json = self.request_json(Post, path, Some(body))
   match json {
     Object(o) =>
@@ -382,13 +370,7 @@ pub async fn QdrantClient::count_points(
   exact? : Bool = false,
 ) -> Int {
   let path = "/collections/" + name + "/points/count"
-  let members : Map[String, Json] = Map([])
-  members["exact"] = Json::boolean(exact)
-  match filter {
-    Some(f) => members["filter"] = f.to_json()
-    None => ()
-  }
-  let body = Json::object(members)
+  let body = count_request_body(filter, exact)
   let json = self.request_json(Post, path, Some(body))
   match json {
     Object(o) =>

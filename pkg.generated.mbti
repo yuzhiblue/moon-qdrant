@@ -6,6 +6,10 @@ import {
 }
 
 // Values
+pub fn count_request_body(Filter?, Bool) -> Json
+
+pub fn join_url(String, String) -> String
+
 pub fn parse_aliases(Json) -> Array[AliasInfo]?
 
 pub fn parse_count_result(Json) -> Int?
@@ -13,6 +17,8 @@ pub fn parse_count_result(Json) -> Int?
 pub fn parse_retrieve_result(Json) -> Array[PointStruct]?
 
 pub fn parse_search_result(Json) -> Array[ScoredPoint]?
+
+pub fn scroll_request_body(Int, Filter?, Int?) -> Json
 
 pub fn vector_to_json(Array[Double]) -> Json
 
@@ -150,4 +156,5 @@ pub trait VectorProvider {
   async fn upsert_points(Self, String, Array[PointStruct]) -> Unit
   async fn upsert_points_batch(Self, String, Array[PointStruct]) -> Unit
   async fn search_points(Self, String, Array[Double], Int, filter? : Json?) -> Array[ScoredPoint]
+  async fn search_with_filter(Self, String, Array[Double], Int, Filter) -> Array[ScoredPoint]
 }

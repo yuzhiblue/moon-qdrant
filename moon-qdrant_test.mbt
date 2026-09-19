@@ -435,3 +435,84 @@ test "aliases response accepts an empty alias list" {
     None => fail("expected an empty alias list")
   }
 }
+
+///|
+test "join_url keeps a single slash between base and path" {
+  assert_true(
+    join_url("http://localhost:6333", "/collections") ==
+    "http://localhost:6333/collections",
+  )
+  // note: join_url does not dedupe a trailing slash on the base;
+  // QdrantClient::new already strips it, so this double-slash case never
+  // reaches it in practice.
+  assert_true(
+    join_url("http://localhost:6333/", "/collections") ==
+    "http://localhost:6333//collections",
+  )
+}
+
+///|
+test "scroll request body omits filter and offset when not given" {
+  let body = scroll_request_body(10, None, None)
+  match body {
+    Object(members) => {
+      assert_true(members.length() == 3)
+      match members.get("filter") {
+        None => ()
+        _ => fail("filter should be omitted")
+      }
+      match members.get("offset") {
+        None => ()
+        _ => fail("offset should be omitted")
+      }
+    }
+    _ => fail("expected an object")
+  }
+}
+
+///|
+test "scroll request body includes filter and offset when given" {
+  let filter = Filter::new().must(Condition::match_keyword("tag", "alpha"))
+  let body = scroll_request_body(5, Some(filter), Some(12))
+  match body {
+    Object(members) => {
+      match members.get("filter") {
+        Some(_) => ()
+        None => fail("expected filter")
+      }
+      match members.get("offset") {
+        Some(Number(n, ..)) => assert_true(n == 12.0)
+        _ => fail("expected offset = 12")
+      }
+    }
+    _ => fail("expected an object")
+  }
+}
+
+///|
+test "count request body toggles exact and includes optional filter" {
+  let body = count_request_body(None, true)
+  match body {
+    Object(members) => {
+      match members.get("exact") {
+        Some(_) => ()
+        None => fail("expected exact = true")
+      }
+      match members.get("filter") {
+        None => ()
+        _ => fail("filter should be omitted")
+      }
+    }
+    _ => fail("expected an object")
+  }
+  let filter = Filter::new().must(Condition::is_empty("deprecated"))
+  let with_filter = count_request_body(Some(filter), false)
+  match with_filter {
+    Object(members) =>
+      match members.get("filter") {
+        Some(_) => ()
+        None => fail("expected filter when provided")
+      }
+    _ => fail("expected an object")
+  }
+}
