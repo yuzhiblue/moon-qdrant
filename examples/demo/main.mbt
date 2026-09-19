@@ -1,6 +1,7 @@
 ///|
-/// End-to-end demo: create a collection, write points, search, read and
-/// delete. Run against a local Qdrant server:
+/// End-to-end demo: create a collection, write points, search with a typed
+/// filter, count, scroll, retrieve, use aliases and finally delete.
+/// Run against a local Qdrant server:
 ///
 ///   docker run -p 6333:6333 qdrant/qdrant
 ///   moon run examples/demo -- http://localhost:6333
@@ -40,14 +41,15 @@ async fn main {
     println("  id=" + hit.id.to_string() + " score=" + hit.score.to_string())
   }
 
-  let alpha_filter : Json = {
-    "must": [{ "key": "tag", "match": { "value": "alpha" } }],
-  }
-  let filtered = client.search_points(
+  // typed filter DSL instead of hand-written JSON
+  let alpha_filter = @moon_qdrant.Filter::new().must(
+    @moon_qdrant.Condition::match_keyword("tag", "alpha"),
+  )
+  let filtered = client.search_points_with_filter(
     collection,
     [0.1, 0.2, 0.3, 0.4],
     5,
-    filter=Some(alpha_filter),
+    alpha_filter,
   )
   println("filtered hits (tag=alpha): " + filtered.length().to_string())
 
@@ -64,9 +66,36 @@ async fn main {
     None => println("point 1 not found")
   }
 
-  client.delete_points(collection, [2])
+  // count: fast estimate by default
+  let total = client.count_points(collection)
+  println("point count: " + total.to_string())
+
+  // scroll one page of points
+  let page = client.scroll_points(collection, 10)
+  println("scrolled points: " + page.points.length().to_string())
+
+  // batch retrieve by ids
+  let fetched = client.retrieve_points(collection, [1, 3])
+  println("retrieved points: " + fetched.length().to_string())
+
+  // aliases
+  client.create_alias("moon-demo-alias", collection)
+  let aliases = client.list_aliases()
+  println("aliases: " + aliases.length().to_string())
+  client.delete_alias("moon-demo-alias")
+
+  // bulk delete points matching a filter
+  client.delete_points_by_filter(
+    collection,
+    @moon_qdrant.Filter::new().must(
+      @moon_qdrant.Condition::match_keyword("tag", "beta"),
+    ),
+  )
+  let remaining = client.count_points(collection)
+  println("points after filter delete: " + remaining.to_string())
+
   let names = client.list_collections()
-  println("collections after cleanup: " + names.length().to_string())
+  println("collections: " + names.length().to_string())
 
   client.delete_collection(collection)
   println("deleted collection: " + collection)

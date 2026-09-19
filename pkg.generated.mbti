@@ -105,6 +105,7 @@ pub async fn QdrantClient::create_collection(Self, String, CollectionConfig) -> 
 pub async fn QdrantClient::delete_alias(Self, String) -> Unit
 pub async fn QdrantClient::delete_collection(Self, String) -> Unit
 pub async fn QdrantClient::delete_points(Self, String, Array[Int]) -> Unit
+pub async fn QdrantClient::delete_points_by_filter(Self, String, Filter) -> Unit
 pub async fn QdrantClient::get_point(Self, String, Int) -> PointStruct?
 pub async fn QdrantClient::health(Self) -> Bool
 pub async fn QdrantClient::list_aliases(Self) -> Array[AliasInfo]

@@ -486,3 +486,20 @@ pub async fn QdrantClient::list_aliases(
     None => raise Failure("unexpected aliases response: " + json.stringify())
   }
 }
+
+///|
+/// Delete points selected by a filter via
+/// `POST /collections/{name}/points/delete`.
+///
+/// This is the bulk-delete variant: every point matching `filter` is
+/// removed in one operation, without listing ids first.
+pub async fn QdrantClient::delete_points_by_filter(
+  self : QdrantClient,
+  name : String,
+  filter : Filter,
+) -> Unit {
+  let path = "/collections/" + name + "/points/delete?wait=true"
+  let body : Json = { "filter": filter.to_json() }
+  let json = self.request_json(Post, path, Some(body))
+  ignore(json)
+}
