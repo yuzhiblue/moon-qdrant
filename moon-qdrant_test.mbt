@@ -453,7 +453,7 @@ test "join_url keeps a single slash between base and path" {
 
 ///|
 test "scroll request body omits filter and offset when not given" {
-  let body = scroll_request_body(10, None, None)
+  let body = scroll_request_body(10, None, None, true, true)
   match body {
     Object(members) => {
       assert_true(members.length() == 3)
@@ -473,7 +473,7 @@ test "scroll request body omits filter and offset when not given" {
 ///|
 test "scroll request body includes filter and offset when given" {
   let filter = Filter::new().must(Condition::match_keyword("tag", "alpha"))
-  let body = scroll_request_body(5, Some(filter), Some(12))
+  let body = scroll_request_body(5, Some(filter), Some(12), true, true)
   match body {
     Object(members) => {
       match members.get("filter") {

@@ -596,17 +596,17 @@ pub fn parse_aliases(json : Json) -> Array[AliasInfo]? {
 
 ///|
 /// Build the request body for POST /collections/{name}/points/scroll.
-/// `with_payload` and `with_vector` are always requested because callers
-/// get full PointStructs back.
 pub fn scroll_request_body(
   limit : Int,
   filter : Filter?,
   offset : Int?,
+  with_payload : Bool,
+  with_vector : Bool,
 ) -> Json {
   let members : Map[String, Json] = Map([])
   members["limit"] = Json::number(limit.to_double())
-  members["with_payload"] = Json::boolean(true)
-  members["with_vector"] = Json::boolean(true)
+  members["with_payload"] = Json::boolean(with_payload)
+  members["with_vector"] = Json::boolean(with_vector)
   match filter {
     Some(f) => members["filter"] = f.to_json()
     None => ()

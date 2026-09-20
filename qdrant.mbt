@@ -24,13 +24,14 @@ pub struct QdrantClient {
 pub fn QdrantClient::new(
   base_url : String,
   api_key? : String? = None,
+  timeout_ms? : Int = 10_000,
 ) -> QdrantClient {
   let base = if base_url.has_suffix("/") {
     base_url[:base_url.length() - 1].to_owned()
   } else {
     base_url
   }
-  let http = @mio.RequestClient::builder().timeout(10_000).build()
+  let http = @mio.RequestClient::builder().timeout(timeout_ms).build()
   { base_url: base, api_key, http, }
 }
 
@@ -85,7 +86,12 @@ async fn QdrantClient::request_json(
   let (code, json) = self.send(verb, path, body)
   if code < 200 || code >= 300 {
     raise Failure(
-      "Qdrant API error " + code.to_string() + ": " + json.stringify(),
+      "Qdrant API error " +
+      code.to_string() +
+      " on " +
+      path +
+      ": " +
+      json.stringify(),
     )
   }
   json
@@ -180,13 +186,15 @@ pub async fn QdrantClient::collection_exists(
 
 ///|
 /// Upsert points into a collection via `PUT /collections/{name}/points`.
-/// The call waits for the operation to be applied before returning.
+/// Pass `wait=false` to return immediately; the operation may still be
+/// propagating on the server.
 pub async fn QdrantClient::upsert_points(
   self : QdrantClient,
   name : String,
   points : Array[PointStruct],
+  wait? : Bool = true,
 ) -> Unit {
-  let path = "/collections/" + name + "/points?wait=true"
+  let path = "/collections/" + name + "/points?wait=" + wait.to_string()
   let point_json : Array[Json] = []
   for p in points {
     point_json.push(p.to_json())
@@ -205,8 +213,9 @@ pub async fn QdrantClient::upsert_points_batch(
   self : QdrantClient,
   name : String,
   points : Array[PointStruct],
+  wait? : Bool = true,
 ) -> Unit {
-  let path = "/collections/" + name + "/points/batch?wait=true"
+  let path = "/collections/" + name + "/points/batch?wait=" + wait.to_string()
   let ids : Array[Json] = []
   let vectors : Array[Json] = []
   let payloads : Array[Json] = []
@@ -233,12 +242,17 @@ pub async fn QdrantClient::get_point(
   self : QdrantClient,
   name : String,
   id : Int,
+  with_payload? : Bool = true,
+  with_vector? : Bool = true,
 ) -> PointStruct? {
   let path = "/collections/" +
     name +
     "/points/" +
     id.to_string() +
-    "?with_payload=true&with_vector=true"
+    "?with_payload=" +
+    with_payload.to_string() +
+    "&with_vector=" +
+    with_vector.to_string()
   let (code, json) = self.send(Get, path, None)
   if code >= 200 && code < 300 {
     match json {
@@ -260,13 +274,14 @@ pub async fn QdrantClient::get_point(
 
 ///|
 /// Delete points by id via `POST /collections/{name}/points/delete`.
-/// The call waits for the operation to be applied before returning.
+/// Pass `wait=false` to return immediately.
 pub async fn QdrantClient::delete_points(
   self : QdrantClient,
   name : String,
   ids : Array[Int],
+  wait? : Bool = true,
 ) -> Unit {
-  let path = "/collections/" + name + "/points/delete?wait=true"
+  let path = "/collections/" + name + "/points/delete?wait=" + wait.to_string()
   let id_json : Array[Json] = []
   for id in ids {
     id_json.push(Json::number(id.to_double()))
@@ -288,21 +303,22 @@ pub async fn QdrantClient::search_points(
   vector : Array[Double],
   limit : Int,
   filter? : Json? = None,
+  with_payload? : Bool = true,
+  with_vector? : Bool = false,
 ) -> Array[ScoredPoint] {
   let path = "/collections/" +
     name +
     "/points/search?limit=" +
     limit.to_string()
-  let body : Json = match filter {
-    Some(f) =>
-      {
-        "vector": vector_to_json(vector),
-        "with_payload": Json::boolean(true),
-        "filter": f,
-      }
-    None =>
-      { "vector": vector_to_json(vector), "with_payload": Json::boolean(true) }
+  let base : Map[String, Json] = Map([])
+  base["vector"] = vector_to_json(vector)
+  base["with_payload"] = Json::boolean(with_payload)
+  base["with_vector"] = Json::boolean(with_vector)
+  match filter {
+    Some(f) => base["filter"] = f
+    None => ()
   }
+  let body = Json::object(base)
   let json = self.request_json(Post, path, Some(body))
   match parse_search_result(json) {
     Some(hits) => hits
@@ -320,8 +336,17 @@ pub async fn QdrantClient::search_points_with_filter(
   vector : Array[Double],
   limit : Int,
   filter : Filter,
+  with_payload? : Bool = true,
+  with_vector? : Bool = false,
 ) -> Array[ScoredPoint] {
-  self.search_points(name, vector, limit, filter=Some(filter.to_json()))
+  self.search_points(
+    name,
+    vector,
+    limit,
+    filter=Some(filter.to_json()),
+    with_payload~,
+    with_vector~,
+  )
 }
 
 ///|
@@ -337,9 +362,13 @@ pub async fn QdrantClient::scroll_points(
   limit : Int,
   filter? : Filter? = None,
   offset? : Int? = None,
+  with_payload? : Bool = true,
+  with_vector? : Bool = true,
 ) -> ScrollResult {
   let path = "/collections/" + name + "/points/scroll"
-  let body = scroll_request_body(limit, filter, offset)
+  let body = scroll_request_body(
+    limit, filter, offset, with_payload, with_vector,
+  )
   let json = self.request_json(Post, path, Some(body))
   match json {
     Object(o) =>
@@ -397,6 +426,8 @@ pub async fn QdrantClient::retrieve_points(
   self : QdrantClient,
   name : String,
   ids : Array[Int],
+  with_payload? : Bool = true,
+  with_vector? : Bool = true,
 ) -> Array[PointStruct] {
   let path = "/collections/" + name + "/points"
   let id_json : Array[Json] = []
@@ -405,8 +436,8 @@ pub async fn QdrantClient::retrieve_points(
   }
   let body : Json = {
     "ids": Json::array(id_json),
-    "with_payload": Json::boolean(true),
-    "with_vector": Json::boolean(true),
+    "with_payload": Json::boolean(with_payload),
+    "with_vector": Json::boolean(with_vector),
   }
   let json = self.request_json(Post, path, Some(body))
   match parse_retrieve_result(json) {
@@ -479,8 +510,9 @@ pub async fn QdrantClient::delete_points_by_filter(
   self : QdrantClient,
   name : String,
   filter : Filter,
+  wait? : Bool = true,
 ) -> Unit {
-  let path = "/collections/" + name + "/points/delete?wait=true"
+  let path = "/collections/" + name + "/points/delete?wait=" + wait.to_string()
   let body : Json = { "filter": filter.to_json() }
   let json = self.request_json(Post, path, Some(body))
   ignore(json)

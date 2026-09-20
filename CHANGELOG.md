@@ -55,3 +55,14 @@ Initial release targeting the September MoonBit hackathon.
 - CI workflow (ubuntu / macos / windows): check, test, fmt, info
 
 [0.1.0]: https://github.com/yuzhiblue/moon-qdrant/releases/tag/v0.1.0
+
+## 0.3.0
+
+- `new` accepts an optional `timeout_ms` (default 10 000).
+- Write operations accept `wait? : Bool = true` (`upsert_points`,
+  `upsert_points_batch`, `delete_points`, `delete_points_by_filter`);
+  pass `wait=false` to return without waiting for server-side propagation.
+- Read operations expose `with_payload` / `with_vector` as optional
+  parameters (`get_point`, `retrieve_points`, `scroll_points`,
+  `search_points`, `search_points_with_filter`).
+- Error messages now include the request path that failed.
