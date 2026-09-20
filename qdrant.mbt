@@ -1065,3 +1065,56 @@ pub async fn QdrantClient::facet_points(
     _ => raise Failure("unexpected facet response: " + json.stringify())
   }
 }
+
+///|
+/// Grouped search via `POST /collections/{name}/points/search/groups`.
+///
+/// Points are grouped by the payload field `group_by`; `limit` bounds the
+/// hits returned per group and `group_size` bounds the number of groups.
+/// The result is one entry per group with its top hits.
+pub async fn QdrantClient::search_points_groups(
+  self : QdrantClient,
+  name : String,
+  vector : Array[Double],
+  limit : Int,
+  group_by : String,
+  group_size : Int,
+  filter? : Json? = None,
+  with_payload? : Bool = true,
+  with_vector? : Bool = false,
+  score_threshold? : Double? = None,
+  using_vector? : String? = None,
+  search_params? : SearchParams? = None,
+) -> Array[ScoredPointGroup] {
+  let path = "/collections/" + name + "/points/search/groups"
+  let members : Map[String, Json] = Map([])
+  members["vector"] = vector_to_json(vector)
+  members["limit"] = Json::number(limit.to_double())
+  members["group_by"] = Json::string(group_by)
+  members["group_size"] = Json::number(group_size.to_double())
+  members["with_payload"] = Json::boolean(with_payload)
+  members["with_vector"] = Json::boolean(with_vector)
+  match filter {
+    Some(f) => members["filter"] = f
+    None => ()
+  }
+  match score_threshold {
+    Some(t) => members["score_threshold"] = Json::number(t)
+    None => ()
+  }
+  match using_vector {
+    Some(u) => members["using"] = Json::string(u)
+    None => ()
+  }
+  match search_params {
+    Some(p) => members["params"] = p.to_json()
+    None => ()
+  }
+  let body = Json::object(members)
+  let json = self.request_json(Post, path, Some(body))
+  match parse_search_groups(json) {
+    Some(groups) => groups
+    None =>
+      raise Failure("unexpected grouped search response: " + json.stringify())
+  }
+}

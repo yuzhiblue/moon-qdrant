@@ -184,6 +184,21 @@ let facet = client.facet_points("demo", "tag", 10)
 for hit in facet.hits {
   println(hit.value.stringify() + ": " + hit.count.to_string())
 }
+
+// grouped search: top hits per distinct payload value
+let groups = client.search_points_groups(
+  "demo",
+  [0.1, 0.2, 0.3, 0.4],
+  2,     // hits per group
+  "tag", // group-by field
+  10,    // max groups
+)
+for group in groups {
+  println(
+    "group " + group.id.stringify() + " -> " +
+    group.hits.length().to_string() + " hits",
+  )
+}
 ```
 
 ### Collection updates, payload indexes and snapshots
@@ -239,6 +254,7 @@ Implemented:
 - [x] `POST /collections/{name}/points/search` vector search with payload
   filters, score_threshold, offset, named-vector `using` and search params
 - [x] `POST /collections/{name}/points/search/batch` batch search
+- [x] `POST /collections/{name}/points/search/groups` grouped search
 - [x] typed filter DSL (`Condition` / `Filter` builder over must/should/must_not)
 - [x] `PUT /collections/{name}/points/batch` batch upsert
 - [x] `POST /collections/{name}/points/scroll` paginated point scrolling
@@ -257,7 +273,6 @@ Implemented:
 
 Planned:
 
-- [ ] `POST /collections/{name}/points/search/groups` grouped search
 - [ ] collection locks and cluster endpoints
 
 ## Development

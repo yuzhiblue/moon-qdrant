@@ -119,6 +119,24 @@ async fn main {
     println("  tag -> count " + hit.count.to_string())
   }
 
+  // grouped search: top hits per payload value
+  let groups = client.search_points_groups(
+    collection,
+    [0.1, 0.2, 0.3, 0.4],
+    2,
+    "tag",
+    10,
+  )
+  println("search groups: " + groups.length().to_string())
+  for group in groups {
+    println(
+      "  group id=" +
+      group.id.stringify() +
+      " hits=" +
+      group.hits.length().to_string(),
+    )
+  }
+
   // payload indexes speed up filtered access
   client.create_payload_index(collection, "tag", "keyword")
   let indexes = client.list_payload_indexes(collection)

@@ -990,3 +990,59 @@ pub fn parse_query_result(json : Json) -> Array[ScoredPoint]? {
     _ => None
   }
 }
+
+///|
+/// One group returned by the grouped search endpoint: the group id (the
+/// payload value points were grouped by) and the top hits within the group.
+pub struct ScoredPointGroup {
+  id : Json
+  hits : Array[ScoredPoint]
+}
+
+///|
+/// Parse one search group: `{ "hits": [...], "id": "alpha" }`.
+pub fn ScoredPointGroup::from_json(json : Json) -> ScoredPointGroup? {
+  guard json is Object(members) else { return None }
+  let id = match members.get("id") {
+    Some(v) => v
+    _ => return None
+  }
+  let hits_arr = match members.get("hits") {
+    Some(Array(arr)) => arr
+    _ => return None
+  }
+  let hits : Array[ScoredPoint] = []
+  for item in hits_arr {
+    match ScoredPoint::from_json(item) {
+      Some(h) => hits.push(h)
+      None => return None
+    }
+  }
+  Some({ id, hits, })
+}
+
+///|
+/// Parse the `result.groups` array of a grouped search response.
+pub fn parse_search_groups(json : Json) -> Array[ScoredPointGroup]? {
+  match json {
+    Object(members) =>
+      match members.get("result") {
+        Some(Object(result)) =>
+          match result.get("groups") {
+            Some(Array(arr)) => {
+              let out : Array[ScoredPointGroup] = []
+              for item in arr {
+                match ScoredPointGroup::from_json(item) {
+                  Some(g) => out.push(g)
+                  None => return None
+                }
+              }
+              Some(out)
+            }
+            _ => None
+          }
+        _ => None
+      }
+    _ => None
+  }
+}

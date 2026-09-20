@@ -30,10 +30,11 @@ All notable changes to moon-qdrant are documented here. The format follows
 - Query API (`POST /collections/{name}/points/query`): `query_nearest`,
   `query_recommend` and a raw `query_points` for advanced queries;
 - Facet counts: `facet_points` with `FacetHit` / `FacetResult` models;
+- Grouped search: `search_points_groups` with `ScoredPointGroup` model;
 - Data models: `NamedVector`, `SearchParams`, `SnapshotInfo`,
-  `PayloadIndexInfo`, `CollectionUpdate`, `FacetHit`, `FacetResult` with JSON
-  conversion and parsing;
-- 16 new unit tests (serialization and parsing for all of the above), demo
+  `PayloadIndexInfo`, `CollectionUpdate`, `FacetHit`, `FacetResult`,
+  `ScoredPointGroup` with JSON conversion and parsing;
+- 18 new unit tests (serialization and parsing for all of the above), demo
   extended to exercise every new capability.
 
 ### Changed

@@ -20,6 +20,8 @@ pub fn parse_query_result(Json) -> Array[ScoredPoint]?
 
 pub fn parse_retrieve_result(Json) -> Array[PointStruct]?
 
+pub fn parse_search_groups(Json) -> Array[ScoredPointGroup]?
+
 pub fn parse_search_result(Json) -> Array[ScoredPoint]?
 
 pub fn parse_snapshots(Json) -> Array[SnapshotInfo]?
@@ -178,6 +180,7 @@ pub async fn QdrantClient::retrieve_points(Self, String, Array[Int], with_payloa
 pub async fn QdrantClient::scroll_points(Self, String, Int, filter? : Filter?, offset? : Int?, with_payload? : Bool, with_vector? : Bool) -> ScrollResult
 pub async fn QdrantClient::search_points(Self, String, Array[Double], Int, filter? : Json?, with_payload? : Bool, with_vector? : Bool, score_threshold? : Double?, offset? : Int?, using_vector? : String?, search_params? : SearchParams?) -> Array[ScoredPoint]
 pub async fn QdrantClient::search_points_batch(Self, String, Array[Json]) -> Array[Array[ScoredPoint]]
+pub async fn QdrantClient::search_points_groups(Self, String, Array[Double], Int, String, Int, filter? : Json?, with_payload? : Bool, with_vector? : Bool, score_threshold? : Double?, using_vector? : String?, search_params? : SearchParams?) -> Array[ScoredPointGroup]
 pub async fn QdrantClient::search_points_named(Self, String, NamedVector, Int, filter? : Json?, with_payload? : Bool, with_vector? : Bool, score_threshold? : Double?, offset? : Int?, search_params? : SearchParams?) -> Array[ScoredPoint]
 pub async fn QdrantClient::search_points_with_filter(Self, String, Array[Double], Int, Filter, with_payload? : Bool, with_vector? : Bool, score_threshold? : Double?, offset? : Int?, using_vector? : String?, search_params? : SearchParams?) -> Array[ScoredPoint]
 pub async fn QdrantClient::search_with_filter(Self, String, Array[Double], Int, Filter, with_payload? : Bool, with_vector? : Bool) -> Array[ScoredPoint]
@@ -193,6 +196,12 @@ pub struct ScoredPoint {
   payload : Json?
 }
 pub fn ScoredPoint::from_json(Json) -> Self?
+
+pub struct ScoredPointGroup {
+  id : Json
+  hits : Array[ScoredPoint]
+}
+pub fn ScoredPointGroup::from_json(Json) -> Self?
 
 pub struct ScrollResult {
   points : Array[PointStruct]

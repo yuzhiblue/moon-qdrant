@@ -821,3 +821,51 @@ test "query result parses like a search result" {
     None => fail("expected a query result")
   }
 }
+
+///|
+test "search group parses hits and group id" {
+  let json : Json = {
+    "hits": [
+      { "id": 1, "version": 0, "score": 0.99, "payload": { "tag": "alpha" } },
+      { "id": 3, "version": 0, "score": 0.80, "payload": { "tag": "alpha" } },
+    ],
+    "id": "alpha",
+  }
+  match @moon-qdrant.ScoredPointGroup::from_json(json) {
+    Some(group) => {
+      assert_true(group.hits.length() == 2)
+      assert_true(group.hits[1].id == 3)
+      match group.id {
+        String(s) => assert_true(s == "alpha")
+        _ => fail("expected string group id")
+      }
+    }
+    None => fail("expected a search group")
+  }
+}
+
+///|
+test "grouped search result parses the standard response" {
+  let json : Json = {
+    "result": {
+      "groups": [
+        {
+          "hits": [{ "id": 1, "version": 0, "score": 0.99, "payload": {} }],
+          "id": "alpha",
+        },
+        {
+          "hits": [{ "id": 2, "version": 0, "score": 0.50, "payload": {} }],
+          "id": "beta",
+        },
+      ],
+    },
+    "status": "ok",
+  }
+  match @moon-qdrant.parse_search_groups(json) {
+    Some(groups) => {
+      assert_true(groups.length() == 2)
+      assert_true(groups[1].hits[0].id == 2)
+    }
+    None => fail("expected search groups")
+  }
+}
