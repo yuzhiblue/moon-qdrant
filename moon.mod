@@ -13,7 +13,7 @@ name = "yuzhiblue/moon-qdrant"
 
 version = "0.3.0"
 
-readme = "README.mbt.md"
+readme = "README.md"
 
 repository = "https://github.com/yuzhiblue/moon-qdrant"
 
