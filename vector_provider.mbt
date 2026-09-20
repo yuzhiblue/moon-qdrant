@@ -39,6 +39,31 @@ pub trait VectorProvider {
 }
 
 ///|
+/// Trait-facing alias of `search_points_with_filter`: the trait method is
+/// named `search_with_filter`, so this method exists under that name and
+/// forwards to the full-featured search entry point. Defining it as a regular
+/// method (rather than inside the impl block) keeps the trait implementation
+/// free of deprecated implicit method promotion.
+pub async fn QdrantClient::search_with_filter(
+  self : QdrantClient,
+  name : String,
+  vector : Array[Double],
+  limit : Int,
+  filter : Filter,
+  with_payload? : Bool = true,
+  with_vector? : Bool = false,
+) -> Array[ScoredPoint] {
+  self.search_points_with_filter(
+    name,
+    vector,
+    limit,
+    filter,
+    with_payload~,
+    with_vector~,
+  )
+}
+
+///|
 pub impl VectorProvider for QdrantClient with fn create_collection(
   self,
   name,
@@ -102,5 +127,5 @@ pub impl VectorProvider for QdrantClient with fn search_with_filter(
   limit,
   filter,
 ) {
-  QdrantClient::search_points_with_filter(self, name, vector, limit, filter)
+  QdrantClient::search_with_filter(self, name, vector, limit, filter)
 }

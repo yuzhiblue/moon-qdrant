@@ -121,6 +121,7 @@ pub async fn QdrantClient::retrieve_points(Self, String, Array[Int], with_payloa
 pub async fn QdrantClient::scroll_points(Self, String, Int, filter? : Filter?, offset? : Int?, with_payload? : Bool, with_vector? : Bool) -> ScrollResult
 pub async fn QdrantClient::search_points(Self, String, Array[Double], Int, filter? : Json?, with_payload? : Bool, with_vector? : Bool) -> Array[ScoredPoint]
 pub async fn QdrantClient::search_points_with_filter(Self, String, Array[Double], Int, Filter, with_payload? : Bool, with_vector? : Bool) -> Array[ScoredPoint]
+pub async fn QdrantClient::search_with_filter(Self, String, Array[Double], Int, Filter, with_payload? : Bool, with_vector? : Bool) -> Array[ScoredPoint]
 pub async fn QdrantClient::upsert_points(Self, String, Array[PointStruct], wait? : Bool) -> Unit
 pub async fn QdrantClient::upsert_points_batch(Self, String, Array[PointStruct], wait? : Bool) -> Unit
 pub impl VectorProvider for QdrantClient

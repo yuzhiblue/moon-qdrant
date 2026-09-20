@@ -17,18 +17,18 @@ fn field(json : Json, key : String) -> Json? {
 
 ///|
 test "distance wire conversion round-trips" {
-  inspect(Distance::Cosine.to_wire(), content="Cosine")
-  inspect(Distance::Euclid.to_wire(), content="Euclid")
-  inspect(Distance::Dot.to_wire(), content="Dot")
-  match Distance::from_wire("Cosine") {
+  inspect(@moon-qdrant.Distance::Cosine.to_wire(), content="Cosine")
+  inspect(@moon-qdrant.Distance::Euclid.to_wire(), content="Euclid")
+  inspect(@moon-qdrant.Distance::Dot.to_wire(), content="Dot")
+  match @moon-qdrant.Distance::from_wire("Cosine") {
     Some(Cosine) => ()
     _ => fail("expected Cosine")
   }
-  match Distance::from_wire("Euclid") {
+  match @moon-qdrant.Distance::from_wire("Euclid") {
     Some(Euclid) => ()
     _ => fail("expected Euclid")
   }
-  match Distance::from_wire("unknown") {
+  match @moon-qdrant.Distance::from_wire("unknown") {
     None => ()
     _ => fail("expected None for unknown distance")
   }
@@ -36,7 +36,7 @@ test "distance wire conversion round-trips" {
 
 ///|
 test "vector params serialize to the qdrant wire shape" {
-  let json = VectorParams::new(4, Distance::Cosine).to_json()
+  let json = @moon-qdrant.VectorParams::new(4, @moon-qdrant.Distance::Cosine).to_json()
   match field(json, "size") {
     Some(Number(n, ..)) => assert_true(n == 4.0)
     _ => fail("expected numeric size")
@@ -49,7 +49,9 @@ test "vector params serialize to the qdrant wire shape" {
 
 ///|
 test "collection config nests vectors" {
-  let json = CollectionConfig::new(VectorParams::new(128, Distance::Dot)).to_json()
+  let json = @moon-qdrant.CollectionConfig::new(
+    @moon-qdrant.VectorParams::new(128, @moon-qdrant.Distance::Dot),
+  ).to_json()
   let vectors = field(json, "vectors")
   match field(vectors.unwrap_or(Json::null()), "size") {
     Some(Number(n, ..)) => assert_true(n == 128.0)
@@ -63,7 +65,9 @@ test "collection config nests vectors" {
 
 ///|
 test "point struct serializes id, vector and payload" {
-  let json = PointStruct::new(42, [1.0, 2.0, 3.0], { "tag": "demo" }).to_json()
+  let json = @moon-qdrant.PointStruct::new(42, [1.0, 2.0, 3.0], {
+    "tag": "demo",
+  }).to_json()
   match field(json, "id") {
     Some(Number(n, ..)) => assert_true(n == 42.0)
     _ => fail("expected numeric id")
@@ -94,7 +98,7 @@ test "collection list parses the standard qdrant response" {
     "result": { "collections": [{ "name": "alice" }, { "name": "bob" }] },
     "status": "ok",
   }
-  match CollectionList::from_json(json) {
+  match @moon-qdrant.CollectionList::from_json(json) {
     Some(list) => {
       assert_true(list.names.length() == 2)
       assert_true(list.names[0] == "alice")
@@ -107,7 +111,7 @@ test "collection list parses the standard qdrant response" {
 ///|
 test "vector params parse from a collection config fragment" {
   let json : Json = { "size": 128, "distance": "Dot" }
-  match VectorParams::from_json(json) {
+  match @moon-qdrant.VectorParams::from_json(json) {
     Some(vp) => {
       assert_true(vp.size == 128)
       assert_true(vp.distance.to_wire() == "Dot")
@@ -127,7 +131,7 @@ test "collection info parses the standard qdrant response" {
     "status": "ok",
     "time": 0.001,
   }
-  match CollectionInfo::from_json(json) {
+  match @moon-qdrant.CollectionInfo::from_json(json) {
     Some(info) => {
       assert_true(info.status == "green")
       match info.points_count {
@@ -155,7 +159,7 @@ test "collection info tolerates a missing points count" {
     },
     "status": "ok",
   }
-  match CollectionInfo::from_json(json) {
+  match @moon-qdrant.CollectionInfo::from_json(json) {
     Some(info) => {
       assert_true(info.status == "grey")
       assert_true(info.points_count is None)
@@ -175,7 +179,7 @@ test "point struct parses the point read response" {
     "vector": [0.5, 1.5, 2.5],
     "payload": { "tag": "demo" },
   }
-  match PointStruct::from_json(json) {
+  match @moon-qdrant.PointStruct::from_json(json) {
     Some(point) => {
       assert_true(point.id == 7)
       assert_true(point.vector.length() == 3)
@@ -191,8 +195,8 @@ test "point struct parses the point read response" {
 
 ///|
 test "point struct round-trips through json" {
-  let point = PointStruct::new(3, [1.0, 2.0], { "tag": "x" })
-  match PointStruct::from_json(point.to_json()) {
+  let point = @moon-qdrant.PointStruct::new(3, [1.0, 2.0], { "tag": "x" })
+  match @moon-qdrant.PointStruct::from_json(point.to_json()) {
     Some(parsed) => {
       assert_true(parsed.id == 3)
       assert_true(parsed.vector.length() == 2)
@@ -210,7 +214,7 @@ test "scored point parses a search hit" {
     "score": 0.99,
     "payload": { "tag": "alpha" },
   }
-  match ScoredPoint::from_json(json) {
+  match @moon-qdrant.ScoredPoint::from_json(json) {
     Some(hit) => {
       assert_true(hit.id == 1)
       assert_true(hit.score == 0.99)
@@ -237,7 +241,7 @@ test "search result parses the standard qdrant response" {
     "status": "ok",
     "time": 0.001,
   }
-  match parse_search_result(json) {
+  match @moon-qdrant.parse_search_result(json) {
     Some(hits) => {
       assert_true(hits.length() == 2)
       assert_true(hits[0].id == 1)
@@ -254,10 +258,10 @@ test "search result parses the standard qdrant response" {
 
 ///|
 test "filter serializes must/should/must_not clause groups" {
-  let filter = Filter::new()
-    .must(Condition::match_keyword("tag", "alpha"))
-    .must(Condition::match_value("active", Json::boolean(true)))
-    .must_not(Condition::is_null("deprecated"))
+  let filter = @moon-qdrant.Filter::new()
+    .must(@moon-qdrant.Condition::match_keyword("tag", "alpha"))
+    .must(@moon-qdrant.Condition::match_value("active", Json::boolean(true)))
+    .must_not(@moon-qdrant.Condition::is_null("deprecated"))
   let json = filter.to_json()
   match field(json, "must") {
     Some(Array(musts)) => assert_true(musts.length() == 2)
@@ -275,7 +279,7 @@ test "filter serializes must/should/must_not clause groups" {
 
 ///|
 test "range condition omits null bounds" {
-  let c = Condition::range("age", gte=Some(18.0), lt=Some(65.0))
+  let c = @moon-qdrant.Condition::range("age", gte=Some(18.0), lt=Some(65.0))
   let json = c.to_json()
   match field(json, "range") {
     Some(rng) => {
@@ -299,7 +303,7 @@ test "range condition omits null bounds" {
 ///|
 test "match values serializes to an any array" {
   let values : Array[Json] = [Json::string("a"), Json::string("b")]
-  let c = Condition::match_values("tag", values)
+  let c = @moon-qdrant.Condition::match_values("tag", values)
   let json = c.to_json()
   match field(json, "match") {
     Some(m) =>
@@ -313,7 +317,7 @@ test "match values serializes to an any array" {
 
 ///|
 test "empty filter serializes to an empty object" {
-  let json = Filter::new().to_json()
+  let json = @moon-qdrant.Filter::new().to_json()
   match json {
     Object(members) => assert_true(members.is_empty())
     _ => fail("expected an object")
@@ -329,7 +333,7 @@ test "scroll result parses points and next page offset" {
     ],
     "next_page_offset": 5,
   }
-  match ScrollResult::from_json(json) {
+  match @moon-qdrant.ScrollResult::from_json(json) {
     Some(page) => {
       assert_true(page.points.length() == 2)
       assert_true(page.points[0].id == 1)
@@ -348,7 +352,7 @@ test "scroll result treats missing next_page_offset as None" {
   let json : Json = {
     "points": [{ "id": 9, "vector": [0.5, 0.6], "payload": {} }],
   }
-  match ScrollResult::from_json(json) {
+  match @moon-qdrant.ScrollResult::from_json(json) {
     Some(page) => {
       assert_true(page.points.length() == 1)
       match page.next_page_offset {
@@ -363,7 +367,7 @@ test "scroll result treats missing next_page_offset as None" {
 ///|
 test "count result parses the point count" {
   let json : Json = { "count": 42 }
-  match parse_count_result(json) {
+  match @moon-qdrant.parse_count_result(json) {
     Some(42) => ()
     _ => fail("expected count = 42")
   }
@@ -372,7 +376,7 @@ test "count result parses the point count" {
 ///|
 test "count result rejects a missing count field" {
   let json : Json = { "status": "ok" }
-  match parse_count_result(json) {
+  match @moon-qdrant.parse_count_result(json) {
     None => ()
     _ => fail("expected None when count is missing")
   }
@@ -387,7 +391,7 @@ test "retrieve result parses multiple points" {
     ],
     "status": "ok",
   }
-  match parse_retrieve_result(json) {
+  match @moon-qdrant.parse_retrieve_result(json) {
     Some(points) => {
       assert_true(points.length() == 2)
       assert_true(points[0].id == 1)
@@ -400,7 +404,7 @@ test "retrieve result parses multiple points" {
 ///|
 test "retrieve result accepts an empty result array" {
   let json : Json = { "result": [] }
-  match parse_retrieve_result(json) {
+  match @moon-qdrant.parse_retrieve_result(json) {
     Some(points) => assert_true(points.is_empty())
     None => fail("expected an empty array")
   }
@@ -417,7 +421,7 @@ test "aliases response parses alias entries" {
     },
     "status": "ok",
   }
-  match parse_aliases(json) {
+  match @moon-qdrant.parse_aliases(json) {
     Some(aliases) => {
       assert_true(aliases.length() == 2)
       assert_true(aliases[0].alias_name == "prod")
@@ -430,30 +434,30 @@ test "aliases response parses alias entries" {
 ///|
 test "aliases response accepts an empty alias list" {
   let json : Json = { "result": { "aliases": [] } }
-  match parse_aliases(json) {
+  match @moon-qdrant.parse_aliases(json) {
     Some(aliases) => assert_true(aliases.is_empty())
     None => fail("expected an empty alias list")
   }
 }
 
 ///|
-test "join_url keeps a single slash between base and path" {
+test "@moon-qdrant.join_url keeps a single slash between base and path" {
   assert_true(
-    join_url("http://localhost:6333", "/collections") ==
+    @moon-qdrant.join_url("http://localhost:6333", "/collections") ==
     "http://localhost:6333/collections",
   )
-  // note: join_url does not dedupe a trailing slash on the base;
+  // note: @moon-qdrant.join_url does not dedupe a trailing slash on the base;
   // QdrantClient::new already strips it, so this double-slash case never
   // reaches it in practice.
   assert_true(
-    join_url("http://localhost:6333/", "/collections") ==
+    @moon-qdrant.join_url("http://localhost:6333/", "/collections") ==
     "http://localhost:6333//collections",
   )
 }
 
 ///|
 test "scroll request body omits filter and offset when not given" {
-  let body = scroll_request_body(10, None, None, true, true)
+  let body = @moon-qdrant.scroll_request_body(10, None, None, true, true)
   match body {
     Object(members) => {
       assert_true(members.length() == 3)
@@ -472,8 +476,16 @@ test "scroll request body omits filter and offset when not given" {
 
 ///|
 test "scroll request body includes filter and offset when given" {
-  let filter = Filter::new().must(Condition::match_keyword("tag", "alpha"))
-  let body = scroll_request_body(5, Some(filter), Some(12), true, true)
+  let filter = @moon-qdrant.Filter::new().must(
+    @moon-qdrant.Condition::match_keyword("tag", "alpha"),
+  )
+  let body = @moon-qdrant.scroll_request_body(
+    5,
+    Some(filter),
+    Some(12),
+    true,
+    true,
+  )
   match body {
     Object(members) => {
       match members.get("filter") {
@@ -491,7 +503,7 @@ test "scroll request body includes filter and offset when given" {
 
 ///|
 test "count request body toggles exact and includes optional filter" {
-  let body = count_request_body(None, true)
+  let body = @moon-qdrant.count_request_body(None, true)
   match body {
     Object(members) => {
       match members.get("exact") {
@@ -505,8 +517,10 @@ test "count request body toggles exact and includes optional filter" {
     }
     _ => fail("expected an object")
   }
-  let filter = Filter::new().must(Condition::is_empty("deprecated"))
-  let with_filter = count_request_body(Some(filter), false)
+  let filter = @moon-qdrant.Filter::new().must(
+    @moon-qdrant.Condition::is_empty("deprecated"),
+  )
+  let with_filter = @moon-qdrant.count_request_body(Some(filter), false)
   match with_filter {
     Object(members) =>
       match members.get("filter") {
