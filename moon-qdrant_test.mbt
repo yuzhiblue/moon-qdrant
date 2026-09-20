@@ -771,3 +771,53 @@ test "payload index list parses the standard response" {
     None => fail("expected payload indexes")
   }
 }
+
+///|
+test "facet hit parses value and count" {
+  let json : Json = { "value": "alpha", "count": 3 }
+  match @moon-qdrant.FacetHit::from_json(json) {
+    Some(hit) => {
+      assert_true(hit.count == 3)
+      match hit.value {
+        String(s) => assert_true(s == "alpha")
+        _ => fail("expected string value")
+      }
+    }
+    None => fail("expected a facet hit")
+  }
+}
+
+///|
+test "facet result parses hits and exact flag" {
+  let json : Json = {
+    "hits": [{ "value": "alpha", "count": 3 }, { "value": "beta", "count": 1 }],
+    "exact": true,
+  }
+  match @moon-qdrant.FacetResult::from_json(json) {
+    Some(fr) => {
+      assert_true(fr.hits.length() == 2)
+      assert_true(fr.hits[1].count == 1)
+      assert_true(fr.exact)
+    }
+    None => fail("expected a facet result")
+  }
+}
+
+///|
+test "query result parses like a search result" {
+  let json : Json = {
+    "result": [
+      { "id": 1, "version": 0, "score": 0.99, "payload": { "tag": "alpha" } },
+      { "id": 2, "version": 0, "score": 0.50, "payload": null },
+    ],
+    "status": "ok",
+  }
+  match @moon-qdrant.parse_query_result(json) {
+    Some(hits) => {
+      assert_true(hits.length() == 2)
+      assert_true(hits[0].id == 1)
+      assert_true(hits[0].score == 0.99)
+    }
+    None => fail("expected a query result")
+  }
+}

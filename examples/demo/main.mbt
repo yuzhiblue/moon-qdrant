@@ -105,6 +105,20 @@ async fn main {
   ])
   println("batch search groups: " + batch.length().to_string())
 
+  // query API: nearest neighbor and recommendation
+  let nearest = client.query_nearest(collection, [0.1, 0.2, 0.3, 0.4], 2)
+  println("query nearest hits: " + nearest.length().to_string())
+  let positive : Array[Json] = [Json::array([0.1, 0.2, 0.3, 0.4])]
+  let recommended = client.query_recommend(collection, positive, 2)
+  println("query recommend hits: " + recommended.length().to_string())
+
+  // facet: distinct payload values with counts
+  let facet = client.facet_points(collection, "tag", 10)
+  println("facet values: " + facet.hits.length().to_string())
+  for hit in facet.hits {
+    println("  tag -> count " + hit.count.to_string())
+  }
+
   // payload indexes speed up filtered access
   client.create_payload_index(collection, "tag", "keyword")
   let indexes = client.list_payload_indexes(collection)

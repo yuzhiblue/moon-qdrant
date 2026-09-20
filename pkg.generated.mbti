@@ -16,6 +16,8 @@ pub fn parse_count_result(Json) -> Int?
 
 pub fn parse_payload_indexes(Json) -> Array[PayloadIndexInfo]?
 
+pub fn parse_query_result(Json) -> Array[ScoredPoint]?
+
 pub fn parse_retrieve_result(Json) -> Array[PointStruct]?
 
 pub fn parse_search_result(Json) -> Array[ScoredPoint]?
@@ -93,6 +95,18 @@ pub(all) enum Distance {
 pub fn Distance::from_wire(String) -> Self?
 pub fn Distance::to_wire(Self) -> String
 
+pub struct FacetHit {
+  value : Json
+  count : Int
+}
+pub fn FacetHit::from_json(Json) -> Self?
+
+pub struct FacetResult {
+  hits : Array[FacetHit]
+  exact : Bool
+}
+pub fn FacetResult::from_json(Json) -> Self?
+
 pub struct Filter {
   must : Array[Condition]
   should : Array[Condition]
@@ -148,6 +162,7 @@ pub async fn QdrantClient::delete_payload_index(Self, String, String, wait? : Bo
 pub async fn QdrantClient::delete_points(Self, String, Array[Int], wait? : Bool) -> Unit
 pub async fn QdrantClient::delete_points_by_filter(Self, String, Filter, wait? : Bool) -> Unit
 pub async fn QdrantClient::delete_snapshot(Self, String, String, wait? : Bool) -> Unit
+pub async fn QdrantClient::facet_points(Self, String, String, Int, filter? : Filter?, exact? : Bool) -> FacetResult
 pub async fn QdrantClient::get_point(Self, String, Int, with_payload? : Bool, with_vector? : Bool) -> PointStruct?
 pub async fn QdrantClient::health(Self) -> Bool
 pub async fn QdrantClient::list_aliases(Self) -> Array[AliasInfo]
@@ -156,6 +171,9 @@ pub async fn QdrantClient::list_payload_indexes(Self, String) -> Array[PayloadIn
 pub async fn QdrantClient::list_snapshots(Self, String) -> Array[SnapshotInfo]
 pub fn QdrantClient::new(String, api_key? : String?, timeout_ms? : Int) -> Self
 pub async fn QdrantClient::overwrite_payload(Self, String, Json, ids? : Array[Int]?, filter? : Filter?, wait? : Bool) -> Unit
+pub async fn QdrantClient::query_nearest(Self, String, Array[Double], Int, filter? : Filter?, using_vector? : String?, score_threshold? : Double?, with_payload? : Bool, with_vector? : Bool) -> Array[ScoredPoint]
+pub async fn QdrantClient::query_points(Self, String, Json, Int, filter? : Filter?, using_vector? : String?, score_threshold? : Double?, with_payload? : Bool, with_vector? : Bool) -> Array[ScoredPoint]
+pub async fn QdrantClient::query_recommend(Self, String, Array[Json], negative? : Array[Json]?, Int, filter? : Filter?, using_vector? : String?, score_threshold? : Double?, with_payload? : Bool, with_vector? : Bool) -> Array[ScoredPoint]
 pub async fn QdrantClient::retrieve_points(Self, String, Array[Int], with_payload? : Bool, with_vector? : Bool) -> Array[PointStruct]
 pub async fn QdrantClient::scroll_points(Self, String, Int, filter? : Filter?, offset? : Int?, with_payload? : Bool, with_vector? : Bool) -> ScrollResult
 pub async fn QdrantClient::search_points(Self, String, Array[Double], Int, filter? : Json?, with_payload? : Bool, with_vector? : Bool, score_threshold? : Double?, offset? : Int?, using_vector? : String?, search_params? : SearchParams?) -> Array[ScoredPoint]

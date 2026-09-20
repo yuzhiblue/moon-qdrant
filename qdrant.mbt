@@ -917,3 +917,151 @@ pub async fn QdrantClient::delete_snapshot(
   let json = self.request_json(Delete, path, None)
   ignore(json)
 }
+
+///|
+/// Run a query against the Qdrant query API via
+/// `POST /collections/{name}/points/query`.
+///
+/// `query` is the raw query JSON, for example
+/// `{ "nearest": [0.1, 0.2, 0.3, 0.4] }` or
+/// `{ "recommend": { "positive": [[...]], "negative": [[...]] } }`.
+/// Prefer the `query_nearest` / `query_recommend` helpers for common cases.
+pub async fn QdrantClient::query_points(
+  self : QdrantClient,
+  name : String,
+  query : Json,
+  limit : Int,
+  filter? : Filter? = None,
+  using_vector? : String? = None,
+  score_threshold? : Double? = None,
+  with_payload? : Bool = true,
+  with_vector? : Bool = false,
+) -> Array[ScoredPoint] {
+  let path = "/collections/" + name + "/points/query"
+  let members : Map[String, Json] = Map([])
+  members["query"] = query
+  members["limit"] = Json::number(limit.to_double())
+  members["with_payload"] = Json::boolean(with_payload)
+  members["with_vector"] = Json::boolean(with_vector)
+  match filter {
+    Some(f) => members["filter"] = f.to_json()
+    None => ()
+  }
+  match using_vector {
+    Some(u) => members["using"] = Json::string(u)
+    None => ()
+  }
+  match score_threshold {
+    Some(t) => members["score_threshold"] = Json::number(t)
+    None => ()
+  }
+  let body = Json::object(members)
+  let json = self.request_json(Post, path, Some(body))
+  match parse_query_result(json) {
+    Some(hits) => hits
+    None => raise Failure("unexpected query response: " + json.stringify())
+  }
+}
+
+///|
+/// Nearest-neighbor query via the query API: find points closest to `vector`.
+/// Equivalent to `search_points` but routed through `/points/query`.
+pub async fn QdrantClient::query_nearest(
+  self : QdrantClient,
+  name : String,
+  vector : Array[Double],
+  limit : Int,
+  filter? : Filter? = None,
+  using_vector? : String? = None,
+  score_threshold? : Double? = None,
+  with_payload? : Bool = true,
+  with_vector? : Bool = false,
+) -> Array[ScoredPoint] {
+  self.query_points(
+    name,
+    { "nearest": vector_to_json(vector) },
+    limit,
+    filter~,
+    using_vector~,
+    score_threshold~,
+    with_payload~,
+    with_vector~,
+  )
+}
+
+///|
+/// Recommendation query via the query API: find points similar to the
+/// `positive` inputs and dissimilar to the `negative` ones.
+///
+/// Each element of `positive` / `negative` is either a dense vector
+/// (`Json::array([...])`) or a point id (`Json::number(id)`).
+pub async fn QdrantClient::query_recommend(
+  self : QdrantClient,
+  name : String,
+  positive : Array[Json],
+  negative? : Array[Json]? = None,
+  limit : Int,
+  filter? : Filter? = None,
+  using_vector? : String? = None,
+  score_threshold? : Double? = None,
+  with_payload? : Bool = true,
+  with_vector? : Bool = false,
+) -> Array[ScoredPoint] {
+  let rec : Map[String, Json] = Map([])
+  rec["positive"] = Json::array(positive)
+  match negative {
+    Some(neg) => rec["negative"] = Json::array(neg)
+    None => ()
+  }
+  self.query_points(
+    name,
+    { "recommend": Json::object(rec) },
+    limit,
+    filter~,
+    using_vector~,
+    score_threshold~,
+    with_payload~,
+    with_vector~,
+  )
+}
+
+///|
+/// Count the distinct values of a payload field via
+/// `POST /collections/{name}/points/facet`.
+///
+/// `key` is the payload field to facet on; `limit` bounds how many distinct
+/// values are returned (by descending count). Pass `exact=true` for exact
+/// counts instead of the faster approximate estimation.
+pub async fn QdrantClient::facet_points(
+  self : QdrantClient,
+  name : String,
+  key : String,
+  limit : Int,
+  filter? : Filter? = None,
+  exact? : Bool = false,
+) -> FacetResult {
+  let path = "/collections/" + name + "/points/facet"
+  let members : Map[String, Json] = Map([])
+  members["key"] = Json::string(key)
+  members["limit"] = Json::number(limit.to_double())
+  members["exact"] = Json::boolean(exact)
+  match filter {
+    Some(f) => members["filter"] = f.to_json()
+    None => ()
+  }
+  let body = Json::object(members)
+  let json = self.request_json(Post, path, Some(body))
+  match json {
+    Object(o) =>
+      match o.get("result") {
+        Some(result) =>
+          match FacetResult::from_json(result) {
+            Some(fr) => fr
+            None =>
+              raise Failure("unexpected facet response: " + json.stringify())
+          }
+        None => raise Failure("unexpected facet response: " + json.stringify())
+      }
+    _ => raise Failure("unexpected facet response: " + json.stringify())
+  }
+}

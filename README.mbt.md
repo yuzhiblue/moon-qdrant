@@ -86,6 +86,7 @@ against) and `search_params` (HNSW tuning / exact search):
 
 ```moonbit nocheck
 // only hits scoring 0.9 or better, skipping the first hit
+
 ///|
 let hits = client.search_points(
   "demo",
@@ -154,6 +155,37 @@ client.delete_payload_by_keys("demo", ["active"], ids=Some([1]))
 client.delete_payload("demo", filter=Some(Filter::new()))
 ```
 
+### Query API and facets
+
+The Qdrant query API (`POST /collections/{name}/points/query`) is exposed
+through `query_nearest` (nearest neighbor) and `query_recommend`
+(recommendation from positive / negative examples), plus a raw `query_points`
+for advanced queries:
+
+```moonbit nocheck
+// nearest neighbor
+let hits = client.query_nearest("demo", [0.1, 0.2, 0.3, 0.4], 2)
+
+// recommendation: like the positive vectors, unlike the negative ones
+let positive : Array[Json] = [
+  Json::array([0.1, 0.2, 0.3, 0.4]),
+  Json::number(3), // point ids are accepted too
+]
+let negative : Array[Json] = [Json::array([0.9, 0.8, 0.7, 0.6])]
+let recs = client.query_recommend(
+  "demo",
+  positive,
+  negative=Some(negative),
+  limit=5,
+)
+
+// facet: how many points carry each distinct value of a payload field
+let facet = client.facet_points("demo", "tag", 10)
+for hit in facet.hits {
+  println(hit.value.stringify() + ": " + hit.count.to_string())
+}
+```
+
 ### Collection updates, payload indexes and snapshots
 
 ```moonbit nocheck
@@ -216,14 +248,16 @@ Implemented:
 - [x] `POST /collections/{name}/points/payload/delete` delete payload
   (whole payload or selected keys)
 - [x] `PUT|GET|DELETE /collections/{name}/indexes/{field}` payload indexes
+- [x] `POST /collections/{name}/points/query` query API
+  (`query_nearest` / `query_recommend` / raw `query_points`)
+- [x] `POST /collections/{name}/points/facet` facet counts
 - [x] `POST /collections/aliases` / `GET /collections/aliases` collection aliases
 - [x] `GET|POST|DELETE /collections/{name}/snapshots` snapshot management
 - [x] unified `VectorProvider` trait (extensible to other vector services)
 
 Planned:
 
-- [ ] `POST /collections/{name}/points/query` query API (recommend / discover)
-- [ ] `GET /collections/{name}/points/facet` facet counts
+- [ ] `POST /collections/{name}/points/search/groups` grouped search
 - [ ] collection locks and cluster endpoints
 
 ## Development

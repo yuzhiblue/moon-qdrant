@@ -912,3 +912,81 @@ pub fn CollectionUpdate::to_json(self : CollectionUpdate) -> Json {
   }
   Json::object(members)
 }
+
+///|
+/// One facet hit from `POST /collections/{name}/points/facet`: a distinct
+/// payload value together with the number of points carrying it.
+pub struct FacetHit {
+  value : Json
+  count : Int
+}
+
+///|
+/// Parse one facet hit: `{ "value": "alpha", "count": 3 }`.
+pub fn FacetHit::from_json(json : Json) -> FacetHit? {
+  guard json is Object(members) else { return None }
+  let value = match members.get("value") {
+    Some(v) => v
+    _ => return None
+  }
+  let count = match members.get("count") {
+    Some(Number(n, ..)) => n.to_int()
+    _ => return None
+  }
+  Some({ value, count, })
+}
+
+///|
+/// Result of a facet query: the value-count hits and whether the counts are
+/// exact (false when Qdrant used an approximate estimation).
+pub struct FacetResult {
+  hits : Array[FacetHit]
+  exact : Bool
+}
+
+///|
+/// Parse the `result` object of a facet response:
+/// `{ "hits": [{ "value": ..., "count": n }], "exact": true }`.
+pub fn FacetResult::from_json(json : Json) -> FacetResult? {
+  guard json is Object(members) else { return None }
+  let hits_arr = match members.get("hits") {
+    Some(Array(arr)) => arr
+    _ => return None
+  }
+  let hits : Array[FacetHit] = []
+  for item in hits_arr {
+    match FacetHit::from_json(item) {
+      Some(h) => hits.push(h)
+      None => return None
+    }
+  }
+  let exact = match members.get("exact") {
+    Some(True) => true
+    Some(False) => false
+    _ => false
+  }
+  Some({ hits, exact, })
+}
+
+///|
+/// Parse the `result` object of a query response (same shape as a search
+/// result array: `{ "id": ..., "score": ..., "payload": ... }`).
+pub fn parse_query_result(json : Json) -> Array[ScoredPoint]? {
+  match json {
+    Object(members) =>
+      match members.get("result") {
+        Some(Array(arr)) => {
+          let out : Array[ScoredPoint] = []
+          for item in arr {
+            match ScoredPoint::from_json(item) {
+              Some(hit) => out.push(hit)
+              None => return None
+            }
+          }
+          Some(out)
+        }
+        _ => None
+      }
+    _ => None
+  }
+}
