@@ -1118,3 +1118,62 @@ pub async fn QdrantClient::search_points_groups(
       raise Failure("unexpected grouped search response: " + json.stringify())
   }
 }
+
+///|
+/// Read the write lock state of a collection via
+/// `GET /collections/{name}/lock`.
+pub async fn QdrantClient::collection_lock(
+  self : QdrantClient,
+  name : String,
+) -> CollectionLock {
+  let path = "/collections/" + name + "/lock"
+  let json = self.request_json(Get, path, None)
+  match json {
+    Object(members) =>
+      match members.get("result") {
+        Some(result) =>
+          match CollectionLock::from_json(result) {
+            Some(lock) => lock
+            None =>
+              raise Failure("unexpected lock response: " + json.stringify())
+          }
+        None => raise Failure("unexpected lock response: " + json.stringify())
+      }
+    _ => raise Failure("unexpected lock response: " + json.stringify())
+  }
+}
+
+///|
+/// Set the write lock state of a collection via
+/// `POST /collections/{name}/lock`.
+///
+/// When `write` is true the collection rejects write operations; provide an
+/// optional `error_message` returned to clients on rejected writes.
+pub async fn QdrantClient::set_collection_lock(
+  self : QdrantClient,
+  name : String,
+  write : Bool,
+  error_message? : String? = None,
+) -> Unit {
+  let path = "/collections/" + name + "/lock"
+  let members : Map[String, Json] = Map([])
+  members["write"] = Json::boolean(write)
+  match error_message {
+    Some(msg) => members["error_message"] = Json::string(msg)
+    None => ()
+  }
+  let body = Json::object(members)
+  let json = self.request_json(Post, path, Some(body))
+  ignore(json)
+}
+
+///|
+/// Read server info via `GET /service`: the Qdrant version and commit hash.
+pub async fn QdrantClient::service_info(self : QdrantClient) -> ServiceInfo {
+  let json = self.request_json(Get, "/service", None)
+  match ServiceInfo::from_json(json) {
+    Some(info) => info
+    None =>
+      raise Failure("unexpected service info response: " + json.stringify())
+  }
+}

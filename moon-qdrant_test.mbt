@@ -869,3 +869,48 @@ test "grouped search result parses the standard response" {
     None => fail("expected search groups")
   }
 }
+
+///|
+test "collection lock parses write flag and message" {
+  let json : Json = { "write": true, "error_message": "locked for writes" }
+  match @moon-qdrant.CollectionLock::from_json(json) {
+    Some(lock) => {
+      assert_true(lock.write)
+      match lock.error_message {
+        Some(msg) => assert_true(msg == "locked for writes")
+        None => fail("expected error message")
+      }
+    }
+    None => fail("expected a collection lock")
+  }
+}
+
+///|
+test "collection lock tolerates a missing error message" {
+  let json : Json = { "write": false }
+  match @moon-qdrant.CollectionLock::from_json(json) {
+    Some(lock) => {
+      assert_true(!lock.write)
+      assert_true(lock.error_message is None)
+    }
+    None => fail("expected a collection lock")
+  }
+}
+
+///|
+test "service info parses version and commit" {
+  let json : Json = { "version": "1.14.0", "commit": "abc123" }
+  match @moon-qdrant.ServiceInfo::from_json(json) {
+    Some(info) => {
+      match info.version {
+        Some(v) => assert_true(v == "1.14.0")
+        None => fail("expected version")
+      }
+      match info.commit {
+        Some(c) => assert_true(c == "abc123")
+        None => fail("expected commit")
+      }
+    }
+    None => fail("expected service info")
+  }
+}

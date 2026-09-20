@@ -31,10 +31,15 @@ All notable changes to moon-qdrant are documented here. The format follows
   `query_recommend` and a raw `query_points` for advanced queries;
 - Facet counts: `facet_points` with `FacetHit` / `FacetResult` models;
 - Grouped search: `search_points_groups` with `ScoredPointGroup` model;
+- Collection write lock: `collection_lock` / `set_collection_lock` with
+  `CollectionLock` model;
+- Server info: `service_info` with `ServiceInfo` model;
+- CI now runs `moon check --target native --deny-warn`;
 - Data models: `NamedVector`, `SearchParams`, `SnapshotInfo`,
   `PayloadIndexInfo`, `CollectionUpdate`, `FacetHit`, `FacetResult`,
-  `ScoredPointGroup` with JSON conversion and parsing;
-- 18 new unit tests (serialization and parsing for all of the above), demo
+  `ScoredPointGroup`, `CollectionLock`, `ServiceInfo` with JSON conversion
+  and parsing;
+- 21 new unit tests (serialization and parsing for all of the above), demo
   extended to exercise every new capability.
 
 ### Changed

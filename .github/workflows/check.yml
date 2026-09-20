@@ -32,7 +32,7 @@ jobs:
           moon update
       - name: moon check
         run: |
-          moon check --target native
+          moon check --target native --deny-warn
       - name: moon test
         run: |
           moon test --target native

@@ -269,11 +269,13 @@ Implemented:
 - [x] `POST /collections/{name}/points/facet` facet counts
 - [x] `POST /collections/aliases` / `GET /collections/aliases` collection aliases
 - [x] `GET|POST|DELETE /collections/{name}/snapshots` snapshot management
+- [x] `GET|POST /collections/{name}/lock` collection write lock
+- [x] `GET /service` server info (version / commit)
 - [x] unified `VectorProvider` trait (extensible to other vector services)
 
 Planned:
 
-- [ ] collection locks and cluster endpoints
+- [ ] cluster endpoints (node management, replicas)
 
 ## Development
 

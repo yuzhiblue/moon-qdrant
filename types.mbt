@@ -1046,3 +1046,51 @@ pub fn parse_search_groups(json : Json) -> Array[ScoredPointGroup]? {
     _ => None
   }
 }
+
+///|
+/// Collection lock state, from GET /collections/{name}/lock.
+/// When `write` is true, the collection rejects write operations; the
+/// optional `error_message` is returned to clients on rejected writes.
+pub struct CollectionLock {
+  write : Bool
+  error_message : String?
+}
+
+///|
+/// Parse the lock object: `{ "write": true, "error_message": "..." }`.
+pub fn CollectionLock::from_json(json : Json) -> CollectionLock? {
+  guard json is Object(members) else { return None }
+  let write = match members.get("write") {
+    Some(True) => true
+    Some(False) => false
+    _ => return None
+  }
+  let error_message = match members.get("error_message") {
+    Some(String(s)) => Some(s)
+    _ => None
+  }
+  Some({ write, error_message, })
+}
+
+///|
+/// Server info from GET /service: the running Qdrant version and build
+/// metadata when present.
+pub struct ServiceInfo {
+  version : String?
+  commit : String?
+}
+
+///|
+/// Parse the service info object.
+pub fn ServiceInfo::from_json(json : Json) -> ServiceInfo? {
+  guard json is Object(members) else { return None }
+  let version = match members.get("version") {
+    Some(String(s)) => Some(s)
+    _ => None
+  }
+  let commit = match members.get("commit") {
+    Some(String(s)) => Some(s)
+    _ => None
+  }
+  Some({ version, commit, })
+}
