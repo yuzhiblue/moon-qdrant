@@ -14,9 +14,13 @@ pub fn parse_aliases(Json) -> Array[AliasInfo]?
 
 pub fn parse_count_result(Json) -> Int?
 
+pub fn parse_payload_indexes(Json) -> Array[PayloadIndexInfo]?
+
 pub fn parse_retrieve_result(Json) -> Array[PointStruct]?
 
 pub fn parse_search_result(Json) -> Array[ScoredPoint]?
+
+pub fn parse_snapshots(Json) -> Array[SnapshotInfo]?
 
 pub fn scroll_request_body(Int, Filter?, Int?, Bool, Bool) -> Json
 
@@ -33,8 +37,10 @@ pub fn AliasInfo::from_json(Json) -> Self?
 
 pub struct CollectionConfig {
   vectors : VectorParams
+  named_vectors : Map[String, VectorParams]?
 }
 pub fn CollectionConfig::new(VectorParams) -> Self
+pub fn CollectionConfig::new_named(Map[String, VectorParams]) -> Self
 pub fn CollectionConfig::to_json(Self) -> Json
 
 pub struct CollectionInfo {
@@ -53,6 +59,15 @@ pub struct CollectionSummary {
   name : String
 }
 pub fn CollectionSummary::from_json(Json) -> Self?
+
+pub struct CollectionUpdate {
+  vectors : VectorParams?
+  named_vectors : Map[String, VectorParams]?
+  replication_factor : Int?
+  write_consistency_factor : Int?
+}
+pub fn CollectionUpdate::new(vectors? : VectorParams?, named_vectors? : Map[String, VectorParams]?, replication_factor? : Int?, write_consistency_factor? : Int?) -> Self
+pub fn CollectionUpdate::to_json(Self) -> Json
 
 pub(all) enum Condition {
   MatchValue(String, Json)
@@ -89,13 +104,28 @@ pub fn Filter::new() -> Self
 pub fn Filter::should(Self, Condition) -> Self
 pub fn Filter::to_json(Self) -> Json
 
+pub struct NamedVector {
+  name : String
+  vector : Array[Double]
+}
+pub fn NamedVector::new(String, Array[Double]) -> Self
+pub fn NamedVector::to_json(Self) -> Json
+
+pub struct PayloadIndexInfo {
+  data_type : String
+  field_schema : Json?
+}
+pub fn PayloadIndexInfo::from_json(Json) -> Self?
+
 pub struct PointStruct {
   id : Int
   vector : Array[Double]
+  named_vectors : Map[String, Array[Double]]?
   payload : Json
 }
 pub fn PointStruct::from_json(Json) -> Self?
 pub fn PointStruct::new(Int, Array[Double], Json) -> Self
+pub fn PointStruct::new_named(Int, Map[String, Array[Double]], Json) -> Self
 pub fn PointStruct::to_json(Self) -> Json
 
 pub struct QdrantClient {
@@ -108,20 +138,33 @@ pub async fn QdrantClient::collection_info(Self, String) -> CollectionInfo
 pub async fn QdrantClient::count_points(Self, String, filter? : Filter?, exact? : Bool) -> Int
 pub async fn QdrantClient::create_alias(Self, String, String) -> Unit
 pub async fn QdrantClient::create_collection(Self, String, CollectionConfig) -> Unit
+pub async fn QdrantClient::create_payload_index(Self, String, String, String, wait? : Bool) -> Unit
+pub async fn QdrantClient::create_snapshot(Self, String, wait? : Bool) -> SnapshotInfo
 pub async fn QdrantClient::delete_alias(Self, String) -> Unit
 pub async fn QdrantClient::delete_collection(Self, String) -> Unit
+pub async fn QdrantClient::delete_payload(Self, String, ids? : Array[Int]?, filter? : Filter?, wait? : Bool) -> Unit
+pub async fn QdrantClient::delete_payload_by_keys(Self, String, Array[String], ids? : Array[Int]?, filter? : Filter?, wait? : Bool) -> Unit
+pub async fn QdrantClient::delete_payload_index(Self, String, String, wait? : Bool) -> Unit
 pub async fn QdrantClient::delete_points(Self, String, Array[Int], wait? : Bool) -> Unit
 pub async fn QdrantClient::delete_points_by_filter(Self, String, Filter, wait? : Bool) -> Unit
+pub async fn QdrantClient::delete_snapshot(Self, String, String, wait? : Bool) -> Unit
 pub async fn QdrantClient::get_point(Self, String, Int, with_payload? : Bool, with_vector? : Bool) -> PointStruct?
 pub async fn QdrantClient::health(Self) -> Bool
 pub async fn QdrantClient::list_aliases(Self) -> Array[AliasInfo]
 pub async fn QdrantClient::list_collections(Self) -> Array[String]
+pub async fn QdrantClient::list_payload_indexes(Self, String) -> Array[PayloadIndexInfo]
+pub async fn QdrantClient::list_snapshots(Self, String) -> Array[SnapshotInfo]
 pub fn QdrantClient::new(String, api_key? : String?, timeout_ms? : Int) -> Self
+pub async fn QdrantClient::overwrite_payload(Self, String, Json, ids? : Array[Int]?, filter? : Filter?, wait? : Bool) -> Unit
 pub async fn QdrantClient::retrieve_points(Self, String, Array[Int], with_payload? : Bool, with_vector? : Bool) -> Array[PointStruct]
 pub async fn QdrantClient::scroll_points(Self, String, Int, filter? : Filter?, offset? : Int?, with_payload? : Bool, with_vector? : Bool) -> ScrollResult
-pub async fn QdrantClient::search_points(Self, String, Array[Double], Int, filter? : Json?, with_payload? : Bool, with_vector? : Bool) -> Array[ScoredPoint]
-pub async fn QdrantClient::search_points_with_filter(Self, String, Array[Double], Int, Filter, with_payload? : Bool, with_vector? : Bool) -> Array[ScoredPoint]
+pub async fn QdrantClient::search_points(Self, String, Array[Double], Int, filter? : Json?, with_payload? : Bool, with_vector? : Bool, score_threshold? : Double?, offset? : Int?, using_vector? : String?, search_params? : SearchParams?) -> Array[ScoredPoint]
+pub async fn QdrantClient::search_points_batch(Self, String, Array[Json]) -> Array[Array[ScoredPoint]]
+pub async fn QdrantClient::search_points_named(Self, String, NamedVector, Int, filter? : Json?, with_payload? : Bool, with_vector? : Bool, score_threshold? : Double?, offset? : Int?, search_params? : SearchParams?) -> Array[ScoredPoint]
+pub async fn QdrantClient::search_points_with_filter(Self, String, Array[Double], Int, Filter, with_payload? : Bool, with_vector? : Bool, score_threshold? : Double?, offset? : Int?, using_vector? : String?, search_params? : SearchParams?) -> Array[ScoredPoint]
 pub async fn QdrantClient::search_with_filter(Self, String, Array[Double], Int, Filter, with_payload? : Bool, with_vector? : Bool) -> Array[ScoredPoint]
+pub async fn QdrantClient::set_payload(Self, String, Json, ids? : Array[Int]?, filter? : Filter?, wait? : Bool) -> Unit
+pub async fn QdrantClient::update_collection(Self, String, CollectionUpdate) -> Unit
 pub async fn QdrantClient::upsert_points(Self, String, Array[PointStruct], wait? : Bool) -> Unit
 pub async fn QdrantClient::upsert_points_batch(Self, String, Array[PointStruct], wait? : Bool) -> Unit
 pub impl VectorProvider for QdrantClient
@@ -138,6 +181,20 @@ pub struct ScrollResult {
   next_page_offset : Int?
 }
 pub fn ScrollResult::from_json(Json) -> Self?
+
+pub struct SearchParams {
+  hnsw_ef : Int?
+  exact : Bool?
+}
+pub fn SearchParams::new(hnsw_ef? : Int?, exact? : Bool?) -> Self
+pub fn SearchParams::to_json(Self) -> Json
+
+pub struct SnapshotInfo {
+  name : String
+  creation_time : String?
+  size : Int?
+}
+pub fn SnapshotInfo::from_json(Json) -> Self?
 
 pub struct VectorParams {
   size : Int

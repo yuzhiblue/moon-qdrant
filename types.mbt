@@ -80,18 +80,49 @@ pub fn VectorParams::from_json(json : Json) -> VectorParams? {
 
 ///|
 /// Collection configuration accepted by PUT /collections/{name}.
+///
+/// Either a single dense-vector configuration (`vectors`) or a set of named
+/// vector configurations (`named_vectors`, via `CollectionConfig::new_named`)
+/// can be provided. Qdrant serializes both under the `vectors` key: a single
+/// object for the former, an object keyed by vector name for the latter.
 pub struct CollectionConfig {
   vectors : VectorParams
+  named_vectors : Map[String, VectorParams]?
 }
 
 ///|
+/// Create a collection with a single dense-vector configuration.
 pub fn CollectionConfig::new(vectors : VectorParams) -> CollectionConfig {
-  { vectors, }
+  { vectors, named_vectors: None, }
 }
 
 ///|
+/// Create a collection with named (multi-) vector configurations, e.g.
+/// `{ "text": VectorParams::new(4, Cosine), "image": VectorParams::new(8, Dot) }`.
+/// The `vectors` slot holds a placeholder that is never serialized when
+/// `named_vectors` is set.
+pub fn CollectionConfig::new_named(
+  named_vectors : Map[String, VectorParams],
+) -> CollectionConfig {
+  {
+    vectors: VectorParams::new(0, Distance::Cosine),
+    named_vectors: Some(named_vectors),
+  }
+}
+
+///|
+/// Convert to the JSON body fragment used by the Qdrant API.
 pub fn CollectionConfig::to_json(self : CollectionConfig) -> Json {
-  { "vectors": self.vectors.to_json() }
+  match self.named_vectors {
+    Some(named) => {
+      let members : Map[String, Json] = Map([])
+      for name in named.keys() {
+        members[name] = named[name].to_json()
+      }
+      { "vectors": Json::object(members) }
+    }
+    None => { "vectors": self.vectors.to_json() }
+  }
 }
 
 ///|
@@ -106,60 +137,110 @@ pub fn vector_to_json(vector : Array[Double]) -> Json {
 }
 
 ///|
-/// A single point: an id, a dense vector, and an optional JSON payload.
+/// A single point: an id, either a dense vector or a set of named vectors,
+/// and an optional JSON payload.
 pub struct PointStruct {
   id : Int
   vector : Array[Double]
+  named_vectors : Map[String, Array[Double]]?
   payload : Json
 }
 
 ///|
+/// Create a point with a single dense vector.
 pub fn PointStruct::new(
   id : Int,
   vector : Array[Double],
   payload : Json,
 ) -> PointStruct {
-  { id, vector, payload, }
+  { id, vector, named_vectors: None, payload, }
+}
+
+///|
+/// Create a point with named vectors, e.g.
+/// `{ "text": [0.1, 0.2], "image": [0.5, 0.6, 0.7] }`.
+pub fn PointStruct::new_named(
+  id : Int,
+  named_vectors : Map[String, Array[Double]],
+  payload : Json,
+) -> PointStruct {
+  { id, vector: [], named_vectors: Some(named_vectors), payload, }
 }
 
 ///|
 /// Convert to the point object used by PUT /collections/{name}/points:
-/// `{ "id": 1, "vector": [...], "payload": {...} }`.
+/// `{ "id": 1, "vector": [...] | {"name": [...]}, "payload": {...} }`.
 pub fn PointStruct::to_json(self : PointStruct) -> Json {
-  {
-    "id": Json::number(self.id.to_double()),
-    "vector": vector_to_json(self.vector),
-    "payload": self.payload,
+  match self.named_vectors {
+    Some(named) => {
+      let members : Map[String, Json] = Map([])
+      for name in named.keys() {
+        members[name] = vector_to_json(named[name])
+      }
+      {
+        "id": Json::number(self.id.to_double()),
+        "vector": Json::object(members),
+        "payload": self.payload,
+      }
+    }
+    None =>
+      {
+        "id": Json::number(self.id.to_double()),
+        "vector": vector_to_json(self.vector),
+        "payload": self.payload,
+      }
   }
 }
 
 ///|
 /// Parse a point object as returned by the point read endpoint:
-/// `{ "id": 1, "vector": [...], "payload": {...} }`.
+/// `{ "id": 1, "vector": [...] | {"name": [...]}, "payload": {...} }`.
+/// A dense vector array fills `vector`; a named-vector object fills
+/// `named_vectors`.
 pub fn PointStruct::from_json(json : Json) -> PointStruct? {
   guard json is Object(members) else { return None }
   let id = match members.get("id") {
     Some(Number(n, ..)) => n.to_int()
     _ => return None
   }
-  let vector = match members.get("vector") {
-    Some(Array(arr)) =>
+  let payload = members.get("payload").unwrap_or(Json::object({}))
+  match members.get("vector") {
+    Some(Array(arr)) => {
       if arr.is_empty() {
         return None
-      } else {
-        let vec : Array[Double] = []
-        for item in arr {
-          match item {
-            Number(n, ..) => vec.push(n)
-            _ => return None
-          }
-        }
-        vec
       }
+      let vec : Array[Double] = []
+      for item in arr {
+        match item {
+          Number(n, ..) => vec.push(n)
+          _ => return None
+        }
+      }
+      Some({ id, vector: vec, named_vectors: None, payload, })
+    }
+    Some(Object(obj)) => {
+      let named : Map[String, Array[Double]] = Map([])
+      for name in obj.keys() {
+        let values : Array[Double] = []
+        match obj[name] {
+          Array(arr) =>
+            for item in arr {
+              match item {
+                Number(n, ..) => values.push(n)
+                _ => return None
+              }
+            }
+          _ => return None
+        }
+        named[name] = values
+      }
+      if named.is_empty() {
+        return None
+      }
+      Some({ id, vector: [], named_vectors: Some(named), payload, })
+    }
     _ => return None
   }
-  let payload = members.get("payload").unwrap_or(Json::object({}))
-  Some({ id, vector, payload, })
 }
 
 ///|
@@ -626,6 +707,208 @@ pub fn count_request_body(filter : Filter?, exact : Bool) -> Json {
   match filter {
     Some(f) => members["filter"] = f.to_json()
     None => ()
+  }
+  Json::object(members)
+}
+
+///|
+/// A named vector used as the search input: `{ "name": "text", "vector": [...] }`.
+/// Send it as the `vector` field of a search request to run the query against
+/// one specific named vector of the collection.
+pub struct NamedVector {
+  name : String
+  vector : Array[Double]
+}
+
+///|
+pub fn NamedVector::new(name : String, vector : Array[Double]) -> NamedVector {
+  { name, vector, }
+}
+
+///|
+/// Convert to the Qdrant wire object: `{ "name": ..., "vector": [...] }`.
+pub fn NamedVector::to_json(self : NamedVector) -> Json {
+  { "name": Json::string(self.name), "vector": vector_to_json(self.vector) }
+}
+
+///|
+/// Search-time parameters passed in the `params` field of a search request.
+/// Both fields are optional; only the set ones are serialized.
+pub struct SearchParams {
+  hnsw_ef : Int?
+  exact : Bool?
+}
+
+///|
+pub fn SearchParams::new(
+  hnsw_ef? : Int? = None,
+  exact? : Bool? = None,
+) -> SearchParams {
+  { hnsw_ef, exact, }
+}
+
+///|
+/// Convert to the Qdrant wire object, omitting unset fields.
+pub fn SearchParams::to_json(self : SearchParams) -> Json {
+  let members : Map[String, Json] = Map([])
+  match self.hnsw_ef {
+    Some(ef) => members["hnsw_ef"] = Json::number(ef.to_double())
+    None => ()
+  }
+  match self.exact {
+    Some(e) => members["exact"] = Json::boolean(e)
+    None => ()
+  }
+  Json::object(members)
+}
+
+///|
+/// One snapshot entry, from GET /collections/{name}/snapshots or
+/// GET /snapshots.
+pub struct SnapshotInfo {
+  name : String
+  creation_time : String?
+  size : Int?
+}
+
+///|
+/// Parse one snapshot entry: `{ "name": "snap-1", "creation_time": "...", "size": 123 }`.
+pub fn SnapshotInfo::from_json(json : Json) -> SnapshotInfo? {
+  guard json is Object(members) else { return None }
+  let name = match members.get("name") {
+    Some(String(s)) => s
+    _ => return None
+  }
+  let creation_time = match members.get("creation_time") {
+    Some(String(s)) => Some(s)
+    _ => None
+  }
+  let size = match members.get("size") {
+    Some(Number(n, ..)) => Some(n.to_int())
+    _ => None
+  }
+  Some({ name, creation_time, size, })
+}
+
+///|
+/// Parse the `result` array of a snapshots response.
+pub fn parse_snapshots(json : Json) -> Array[SnapshotInfo]? {
+  match json {
+    Object(members) =>
+      match members.get("result") {
+        Some(Array(arr)) => {
+          let out : Array[SnapshotInfo] = []
+          for item in arr {
+            match SnapshotInfo::from_json(item) {
+              Some(s) => out.push(s)
+              None => return None
+            }
+          }
+          Some(out)
+        }
+        _ => None
+      }
+    _ => None
+  }
+}
+
+///|
+/// One payload index entry, from GET /collections/{name}/indexes.
+pub struct PayloadIndexInfo {
+  data_type : String
+  field_schema : Json?
+}
+
+///|
+/// Parse one payload index entry:
+/// `{ "data_type": "keyword", "field_schema": "keyword", "points": 3 }`.
+pub fn PayloadIndexInfo::from_json(json : Json) -> PayloadIndexInfo? {
+  guard json is Object(members) else { return None }
+  let data_type = match members.get("data_type") {
+    Some(String(s)) => s
+    _ => return None
+  }
+  let field_schema = members.get("field_schema")
+  Some({ data_type, field_schema, })
+}
+
+///|
+/// Parse the `result` array of a payload-indexes response.
+pub fn parse_payload_indexes(json : Json) -> Array[PayloadIndexInfo]? {
+  match json {
+    Object(members) =>
+      match members.get("result") {
+        Some(Array(arr)) => {
+          let out : Array[PayloadIndexInfo] = []
+          for item in arr {
+            match PayloadIndexInfo::from_json(item) {
+              Some(i) => out.push(i)
+              None => return None
+            }
+          }
+          Some(out)
+        }
+        _ => None
+      }
+    _ => None
+  }
+}
+
+///|
+/// Update settings of an existing collection, via PATCH /collections/{name}.
+///
+/// All fields are optional; unset fields are omitted from the request body.
+/// `vectors` / `named_vectors` update the vector configuration (changing the
+/// size of an existing named vector is not supported by Qdrant), while
+/// `replication_factor` and `write_consistency_factor` update the shard
+/// replication settings.
+pub struct CollectionUpdate {
+  vectors : VectorParams?
+  named_vectors : Map[String, VectorParams]?
+  replication_factor : Int?
+  write_consistency_factor : Int?
+}
+
+///|
+pub fn CollectionUpdate::new(
+  vectors? : VectorParams? = None,
+  named_vectors? : Map[String, VectorParams]? = None,
+  replication_factor? : Int? = None,
+  write_consistency_factor? : Int? = None,
+) -> CollectionUpdate {
+  { vectors, named_vectors, replication_factor, write_consistency_factor, }
+}
+
+///|
+/// Convert to the PATCH request body, omitting unset fields.
+pub fn CollectionUpdate::to_json(self : CollectionUpdate) -> Json {
+  let members : Map[String, Json] = Map([])
+  match self.vectors {
+    Some(v) => members["vectors"] = v.to_json()
+    None => ()
+  }
+  match self.named_vectors {
+    Some(named) => {
+      let vmembers : Map[String, Json] = Map([])
+      for name in named.keys() {
+        vmembers[name] = named[name].to_json()
+      }
+      members["vectors"] = Json::object(vmembers)
+    }
+    None => ()
+  }
+  let params : Map[String, Json] = Map([])
+  match self.replication_factor {
+    Some(rf) => params["replication_factor"] = Json::number(rf.to_double())
+    None => ()
+  }
+  match self.write_consistency_factor {
+    Some(wcf) =>
+      params["write_consistency_factor"] = Json::number(wcf.to_double())
+    None => ()
+  }
+  if !params.is_empty() {
+    members["params"] = Json::object(params)
   }
   Json::object(members)
 }

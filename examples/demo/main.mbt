@@ -84,6 +84,40 @@ async fn main {
   println("aliases: " + aliases.length().to_string())
   client.delete_alias("moon-demo-alias")
 
+  // advanced search: score threshold keeps only hits above the score
+  let top = client.search_points(
+    collection,
+    [0.1, 0.2, 0.3, 0.4],
+    5,
+    score_threshold=Some(0.9),
+  )
+  println("hits above 0.9: " + top.length().to_string())
+
+  // payload management: set an extra field, then delete one key
+  client.set_payload(collection, { "active": true }, ids=Some([1]))
+  client.delete_payload_by_keys(collection, ["active"], ids=Some([1]))
+  println("payload set and key deleted on point 1")
+
+  // batch search: two queries in one round trip
+  let batch = client.search_points_batch(collection, [
+    { "vector": [0.1, 0.2, 0.3, 0.4], "limit": 2 },
+    { "vector": [0.9, 0.8, 0.7, 0.6], "limit": 2 },
+  ])
+  println("batch search groups: " + batch.length().to_string())
+
+  // payload indexes speed up filtered access
+  client.create_payload_index(collection, "tag", "keyword")
+  let indexes = client.list_payload_indexes(collection)
+  println("payload indexes: " + indexes.length().to_string())
+  client.delete_payload_index(collection, "tag")
+
+  // snapshots for backup / restore
+  let snap = client.create_snapshot(collection)
+  println("created snapshot: " + snap.name)
+  let snaps = client.list_snapshots(collection)
+  println("snapshots listed: " + snaps.length().to_string())
+  client.delete_snapshot(collection, snap.name)
+
   // bulk delete points matching a filter
   client.delete_points_by_filter(
     collection,
@@ -99,5 +133,51 @@ async fn main {
 
   client.delete_collection(collection)
   println("deleted collection: " + collection)
+
+  // ---- named vectors ----
+  let named_collection = "moon-qdrant-demo-named"
+  if client.collection_exists(named_collection) {
+    client.delete_collection(named_collection)
+  }
+  let named_vectors : Map[String, @moon_qdrant.VectorParams] = Map([])
+  named_vectors["text"] = @moon_qdrant.VectorParams::new(
+    4,
+    @moon_qdrant.Distance::Cosine,
+  )
+  named_vectors["image"] = @moon_qdrant.VectorParams::new(
+    8,
+    @moon_qdrant.Distance::Dot,
+  )
+  client.create_collection(
+    named_collection,
+    @moon_qdrant.CollectionConfig::new_named(named_vectors),
+  )
+  println("created named-vector collection: " + named_collection)
+
+  let nv_points : Map[String, Array[Double]] = Map([])
+  nv_points["text"] = [0.1, 0.2, 0.3, 0.4]
+  nv_points["image"] = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0]
+  client.upsert_points(named_collection, [
+    @moon_qdrant.PointStruct::new_named(1, nv_points, { "tag": "alpha" }),
+  ])
+  let text_hits = client.search_points(
+    named_collection,
+    [0.1, 0.2, 0.3, 0.4],
+    1,
+    using_vector=Some("text"),
+  )
+  println("named-vector search (text): " + text_hits.length().to_string())
+  let image_hits = client.search_points_named(
+    named_collection,
+    @moon_qdrant.NamedVector::new("image", [
+      1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0,
+    ]),
+    1,
+  )
+  println("named-vector search (image): " + image_hits.length().to_string())
+
+  client.delete_collection(named_collection)
+  println("deleted named-vector collection: " + named_collection)
+
   println("demo finished")
 }

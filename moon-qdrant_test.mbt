@@ -530,3 +530,244 @@ test "count request body toggles exact and includes optional filter" {
     _ => fail("expected an object")
   }
 }
+
+///|
+test "collection config with named vectors serializes a keyed map" {
+  let named : Map[String, @moon-qdrant.VectorParams] = Map([])
+  named["text"] = @moon-qdrant.VectorParams::new(
+    4,
+    @moon-qdrant.Distance::Cosine,
+  )
+  named["image"] = @moon-qdrant.VectorParams::new(8, @moon-qdrant.Distance::Dot)
+  let json = @moon-qdrant.CollectionConfig::new_named(named).to_json()
+  match field(json, "vectors") {
+    Some(Object(vectors)) => {
+      assert_true(vectors.length() == 2)
+      match vectors.get("text") {
+        Some(Object(text)) =>
+          match text.get("size") {
+            Some(Number(n, ..)) => assert_true(n == 4.0)
+            _ => fail("expected text size")
+          }
+        _ => fail("expected text named vector")
+      }
+      match vectors.get("image") {
+        Some(Object(image)) =>
+          match image.get("distance") {
+            Some(String(s)) => assert_true(s == "Dot")
+            _ => fail("expected image distance")
+          }
+        _ => fail("expected image named vector")
+      }
+    }
+    _ => fail("expected vectors object")
+  }
+}
+
+///|
+test "point struct serializes named vectors as a keyed object" {
+  let named : Map[String, Array[Double]] = Map([])
+  named["text"] = [0.1, 0.2, 0.3, 0.4]
+  named["image"] = [1.0, 2.0]
+  let json = @moon-qdrant.PointStruct::new_named(9, named, { "tag": "x" }).to_json()
+  match field(json, "id") {
+    Some(Number(n, ..)) => assert_true(n == 9.0)
+    _ => fail("expected id")
+  }
+  match field(json, "vector") {
+    Some(Object(vectors)) => {
+      assert_true(vectors.length() == 2)
+      match vectors.get("text") {
+        Some(Array(arr)) => assert_true(arr.length() == 4)
+        _ => fail("expected text vector array")
+      }
+    }
+    _ => fail("expected named vector object")
+  }
+}
+
+///|
+test "point struct parses a named-vector object" {
+  let json : Json = {
+    "id": 5,
+    "vector": { "text": [0.1, 0.2, 0.3, 0.4], "image": [1.0, 2.0] },
+    "payload": { "tag": "alpha" },
+  }
+  match @moon-qdrant.PointStruct::from_json(json) {
+    Some(point) => {
+      assert_true(point.id == 5)
+      match point.named_vectors {
+        Some(named) => {
+          assert_true(named.length() == 2)
+          match named.get("text") {
+            Some(vec) => assert_true(vec.length() == 4)
+            None => fail("expected text vector")
+          }
+        }
+        None => fail("expected named vectors")
+      }
+    }
+    None => fail("expected a point struct")
+  }
+}
+
+///|
+test "dense point struct still parses without named vectors" {
+  let json : Json = { "id": 5, "vector": [0.1, 0.2], "payload": {} }
+  match @moon-qdrant.PointStruct::from_json(json) {
+    Some(point) => {
+      assert_true(point.vector.length() == 2)
+      assert_true(point.named_vectors is None)
+    }
+    None => fail("expected a point struct")
+  }
+}
+
+///|
+test "named vector serializes name and vector" {
+  let json = @moon-qdrant.NamedVector::new("text", [0.1, 0.2]).to_json()
+  match field(json, "name") {
+    Some(String(s)) => assert_true(s == "text")
+    _ => fail("expected name")
+  }
+  match field(json, "vector") {
+    Some(Array(arr)) => assert_true(arr.length() == 2)
+    _ => fail("expected vector")
+  }
+}
+
+///|
+test "search params omits unset fields" {
+  let json = @moon-qdrant.SearchParams::new(exact=Some(true)).to_json()
+  match json {
+    Object(members) => {
+      match members.get("exact") {
+        Some(_) => ()
+        None => fail("expected exact")
+      }
+      match members.get("hnsw_ef") {
+        None => ()
+        _ => fail("hnsw_ef should be omitted")
+      }
+    }
+    _ => fail("expected an object")
+  }
+}
+
+///|
+test "search params includes hnsw_ef when set" {
+  let json = @moon-qdrant.SearchParams::new(hnsw_ef=Some(64)).to_json()
+  match field(json, "hnsw_ef") {
+    Some(Number(n, ..)) => assert_true(n == 64.0)
+    _ => fail("expected hnsw_ef")
+  }
+}
+
+///|
+test "collection update serializes only set fields" {
+  let update = @moon-qdrant.CollectionUpdate::new(replication_factor=Some(2))
+  let json = update.to_json()
+  match field(json, "params") {
+    Some(Object(params)) =>
+      match params.get("replication_factor") {
+        Some(Number(n, ..)) => assert_true(n == 2.0)
+        _ => fail("expected replication factor")
+      }
+    _ => fail("expected params")
+  }
+  match field(json, "vectors") {
+    None => ()
+    _ => fail("vectors should be omitted")
+  }
+}
+
+///|
+test "collection update serializes named vector updates" {
+  let named : Map[String, @moon-qdrant.VectorParams] = Map([])
+  named["text"] = @moon-qdrant.VectorParams::new(
+    4,
+    @moon-qdrant.Distance::Cosine,
+  )
+  let update = @moon-qdrant.CollectionUpdate::new(named_vectors=Some(named))
+  let json = update.to_json()
+  match field(json, "vectors") {
+    Some(Object(vectors)) =>
+      match vectors.get("text") {
+        Some(Object(_)) => ()
+        _ => fail("expected text vector params")
+      }
+    _ => fail("expected vectors object")
+  }
+}
+
+///|
+test "snapshot info parses a snapshot entry" {
+  let json : Json = {
+    "name": "snap-1",
+    "creation_time": "2026-09-20T10:00:00",
+    "size": 12345,
+  }
+  match @moon-qdrant.SnapshotInfo::from_json(json) {
+    Some(info) => {
+      assert_true(info.name == "snap-1")
+      match info.creation_time {
+        Some(t) => assert_true(t == "2026-09-20T10:00:00")
+        None => fail("expected creation time")
+      }
+      match info.size {
+        Some(n) => assert_true(n == 12345)
+        None => fail("expected size")
+      }
+    }
+    None => fail("expected snapshot info")
+  }
+}
+
+///|
+test "snapshots list parses the standard response" {
+  let json : Json = {
+    "result": [
+      { "name": "snap-1", "size": 10 },
+      { "name": "snap-2", "size": 20 },
+    ],
+    "status": "ok",
+  }
+  match @moon-qdrant.parse_snapshots(json) {
+    Some(snaps) => {
+      assert_true(snaps.length() == 2)
+      assert_true(snaps[1].name == "snap-2")
+    }
+    None => fail("expected snapshots")
+  }
+}
+
+///|
+test "payload index info parses an index entry" {
+  let json : Json = {
+    "data_type": "keyword",
+    "field_schema": "keyword",
+    "points": 3,
+  }
+  match @moon-qdrant.PayloadIndexInfo::from_json(json) {
+    Some(index) => assert_true(index.data_type == "keyword")
+    None => fail("expected payload index info")
+  }
+}
+
+///|
+test "payload index list parses the standard response" {
+  let json : Json = {
+    "result": [
+      { "data_type": "keyword", "field_schema": "keyword", "points": 3 },
+      { "data_type": "integer", "field_schema": "integer", "points": 3 },
+    ],
+    "status": "ok",
+  }
+  match @moon-qdrant.parse_payload_indexes(json) {
+    Some(indexes) => {
+      assert_true(indexes.length() == 2)
+      assert_true(indexes[1].data_type == "integer")
+    }
+    None => fail("expected payload indexes")
+  }
+}

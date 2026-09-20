@@ -78,6 +78,102 @@ client.delete_points("demo", [2])
 client.delete_collection("demo")
 ```
 
+### Advanced search
+
+`search_points` accepts optional `score_threshold` (keep only hits above a
+score), `offset` (pagination), `using_vector` (pick a named vector to query
+against) and `search_params` (HNSW tuning / exact search):
+
+```moonbit nocheck
+// only hits scoring 0.9 or better, skipping the first hit
+///|
+let hits = client.search_points(
+  "demo",
+  [0.1, 0.2, 0.3, 0.4],
+  2,
+  score_threshold=Some(0.9),
+  offset=Some(1),
+  search_params=Some(SearchParams::new(exact=Some(true))),
+)
+
+// several searches in one round trip
+
+///|
+let batch = client.search_points_batch("demo", [
+  { "vector": [0.1, 0.2, 0.3, 0.4], "limit": 2 },
+  { "vector": [0.9, 0.8, 0.7, 0.6], "limit": 2 },
+])
+```
+
+### Named vectors
+
+Qdrant collections can store several vectors per point. moon-qdrant supports
+this end to end: create the collection with named configurations, upsert
+points with several vectors, and search against one of them.
+
+```moonbit nocheck
+let named : Map[String, VectorParams] = Map([])
+named["text"] = VectorParams::new(4, Distance::Cosine)
+named["image"] = VectorParams::new(8, Distance::Dot)
+client.create_collection("multi", CollectionConfig::new_named(named))
+
+let vectors : Map[String, Array[Double]] = Map([])
+vectors["text"] = [0.1, 0.2, 0.3, 0.4]
+vectors["image"] = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0]
+client.upsert_points("multi", [PointStruct::new_named(1, vectors, { "tag": "a" })])
+
+// search against the "text" vector
+let hits = client.search_points(
+  "multi",
+  [0.1, 0.2, 0.3, 0.4],
+  1,
+  using_vector=Some("text"),
+)
+// or via a NamedVector input
+let hits = client.search_points_named(
+  "multi",
+  NamedVector::new("image", [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0]),
+  1,
+)
+```
+
+### Payload management
+
+```moonbit nocheck
+// merge fields into the payload of points 1 and 2
+client.set_payload("demo", { "active": true }, ids=Some([1, 2]))
+// replace the whole payload of points matching a filter
+client.overwrite_payload(
+  "demo",
+  { "state": "new" },
+  filter=Some(Filter::new().must(Condition::match_keyword("tag", "alpha"))),
+)
+// drop selected keys from point 1
+client.delete_payload_by_keys("demo", ["active"], ids=Some([1]))
+// drop the whole payload of all points matching a filter
+client.delete_payload("demo", filter=Some(Filter::new()))
+```
+
+### Collection updates, payload indexes and snapshots
+
+```moonbit nocheck
+// update replication settings
+client.update_collection(
+  "demo",
+  CollectionUpdate::new(replication_factor=Some(2)),
+)
+
+// index a payload field for fast filtered access
+client.create_payload_index("demo", "tag", "keyword")
+let indexes = client.list_payload_indexes("demo")
+client.delete_payload_index("demo", "tag")
+
+// snapshot the collection for backup / migration
+let snap = client.create_snapshot("demo")
+let snapshots = client.list_snapshots("demo")
+client.delete_snapshot("demo", snap.name)
+```
+
 ## Examples
 
 Health-check CLI (needs a running Qdrant server):
@@ -100,22 +196,35 @@ Implemented:
 
 - [x] `GET /healthz` health check
 - [x] `GET /collections` list collections
-- [x] `PUT /collections/{name}` create collection
+- [x] `PUT /collections/{name}` create collection (single or named vectors)
+- [x] `PATCH /collections/{name}` update collection settings
 - [x] `GET /collections/{name}` collection info
 - [x] `DELETE /collections/{name}` delete collection
 - [x] `GET /collections/{name}/exists` collection existence check
-- [x] `PUT /collections/{name}/points` upsert points
+- [x] `PUT /collections/{name}/points` upsert points (dense or named vectors)
 - [x] `GET /collections/{name}/points/{id}` get a point
-- [x] `POST /collections/{name}/points/delete` delete points by id
-- [x] `POST /collections/{name}/points/search` vector search with payload filters
+- [x] `POST /collections/{name}/points/delete` delete points by id or filter
+- [x] `POST /collections/{name}/points/search` vector search with payload
+  filters, score_threshold, offset, named-vector `using` and search params
+- [x] `POST /collections/{name}/points/search/batch` batch search
 - [x] typed filter DSL (`Condition` / `Filter` builder over must/should/must_not)
 - [x] `PUT /collections/{name}/points/batch` batch upsert
 - [x] `POST /collections/{name}/points/scroll` paginated point scrolling
 - [x] `POST /collections/{name}/points/count` point count (exact or estimated)
 - [x] `POST /collections/{name}/points` batch retrieve by ids
-- [x] `POST /collections/{name}/points/delete` delete points by filter
+- [x] `PUT|POST /collections/{name}/points/payload` set / overwrite payload
+- [x] `POST /collections/{name}/points/payload/delete` delete payload
+  (whole payload or selected keys)
+- [x] `PUT|GET|DELETE /collections/{name}/indexes/{field}` payload indexes
 - [x] `POST /collections/aliases` / `GET /collections/aliases` collection aliases
+- [x] `GET|POST|DELETE /collections/{name}/snapshots` snapshot management
 - [x] unified `VectorProvider` trait (extensible to other vector services)
+
+Planned:
+
+- [ ] `POST /collections/{name}/points/query` query API (recommend / discover)
+- [ ] `GET /collections/{name}/points/facet` facet counts
+- [ ] collection locks and cluster endpoints
 
 ## Development
 

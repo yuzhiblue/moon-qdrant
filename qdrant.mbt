@@ -60,6 +60,7 @@ async fn QdrantClient::send(
     Post => self.http.post(url)
     Put => self.http.put(url)
     Delete => self.http.delete(url)
+    Patch => self.http.patch(url)
     _ => raise Failure("unsupported method for Qdrant API")
   }
   let builder = match self.api_key {
@@ -297,6 +298,11 @@ pub async fn QdrantClient::delete_points(
 /// `limit` bounds how many hits are returned. `filter` is an optional
 /// Qdrant filter JSON object, for example
 /// `{ "must": [{ "key": "tag", "match": { "value": "alpha" } }] }`.
+///
+/// Advanced options: `score_threshold` keeps only hits above the score,
+/// `offset` paginates search results, `using_vector` selects which named
+/// vector to query against, and `search_params` carries search-time tuning
+/// (`hnsw_ef`, `exact`).
 pub async fn QdrantClient::search_points(
   self : QdrantClient,
   name : String,
@@ -305,17 +311,97 @@ pub async fn QdrantClient::search_points(
   filter? : Json? = None,
   with_payload? : Bool = true,
   with_vector? : Bool = false,
+  score_threshold? : Double? = None,
+  offset? : Int? = None,
+  using_vector? : String? = None,
+  search_params? : SearchParams? = None,
+) -> Array[ScoredPoint] {
+  self.search_points_raw(
+    name,
+    vector_to_json(vector),
+    limit,
+    filter,
+    with_payload,
+    with_vector,
+    score_threshold,
+    offset,
+    using_vector,
+    search_params,
+  )
+}
+
+///|
+/// Search with a named vector as input: the query vector is matched against
+/// the named vector with the given name (Qdrant supports several vectors per
+/// point). `using` is implied by the name carried in `named_vector`.
+pub async fn QdrantClient::search_points_named(
+  self : QdrantClient,
+  name : String,
+  named_vector : NamedVector,
+  limit : Int,
+  filter? : Json? = None,
+  with_payload? : Bool = true,
+  with_vector? : Bool = false,
+  score_threshold? : Double? = None,
+  offset? : Int? = None,
+  search_params? : SearchParams? = None,
+) -> Array[ScoredPoint] {
+  self.search_points_raw(
+    name,
+    named_vector.to_json(),
+    limit,
+    filter,
+    with_payload,
+    with_vector,
+    score_threshold,
+    offset,
+    None,
+    search_params,
+  )
+}
+
+///|
+/// Core search implementation shared by the dense and named variants.
+/// `vector` is the already-serialized vector field of the request body.
+async fn QdrantClient::search_points_raw(
+  self : QdrantClient,
+  name : String,
+  vector : Json,
+  limit : Int,
+  filter : Json?,
+  with_payload : Bool,
+  with_vector : Bool,
+  score_threshold : Double?,
+  offset : Int?,
+  using_vector : String?,
+  search_params : SearchParams?,
 ) -> Array[ScoredPoint] {
   let path = "/collections/" +
     name +
     "/points/search?limit=" +
     limit.to_string()
   let base : Map[String, Json] = Map([])
-  base["vector"] = vector_to_json(vector)
+  base["vector"] = vector
   base["with_payload"] = Json::boolean(with_payload)
   base["with_vector"] = Json::boolean(with_vector)
   match filter {
     Some(f) => base["filter"] = f
+    None => ()
+  }
+  match score_threshold {
+    Some(t) => base["score_threshold"] = Json::number(t)
+    None => ()
+  }
+  match offset {
+    Some(o) => base["offset"] = Json::number(o.to_double())
+    None => ()
+  }
+  match using_vector {
+    Some(u) => base["using"] = Json::string(u)
+    None => ()
+  }
+  match search_params {
+    Some(p) => base["params"] = p.to_json()
     None => ()
   }
   let body = Json::object(base)
@@ -338,6 +424,10 @@ pub async fn QdrantClient::search_points_with_filter(
   filter : Filter,
   with_payload? : Bool = true,
   with_vector? : Bool = false,
+  score_threshold? : Double? = None,
+  offset? : Int? = None,
+  using_vector? : String? = None,
+  search_params? : SearchParams? = None,
 ) -> Array[ScoredPoint] {
   self.search_points(
     name,
@@ -346,6 +436,10 @@ pub async fn QdrantClient::search_points_with_filter(
     filter=Some(filter.to_json()),
     with_payload~,
     with_vector~,
+    score_threshold~,
+    offset~,
+    using_vector~,
+    search_params~,
   )
 }
 
@@ -515,5 +609,311 @@ pub async fn QdrantClient::delete_points_by_filter(
   let path = "/collections/" + name + "/points/delete?wait=" + wait.to_string()
   let body : Json = { "filter": filter.to_json() }
   let json = self.request_json(Post, path, Some(body))
+  ignore(json)
+}
+
+///|
+/// Run several searches in one round trip via
+/// `POST /collections/{name}/points/search/batch`.
+///
+/// Each element is a search request JSON object, for example
+/// `{ "vector": [...], "limit": 5, "with_payload": true }`; the returned
+/// array has one entry (itself an array of hits) per request.
+pub async fn QdrantClient::search_points_batch(
+  self : QdrantClient,
+  name : String,
+  searches : Array[Json],
+) -> Array[Array[ScoredPoint]] {
+  let path = "/collections/" + name + "/points/search/batch"
+  let body : Json = { "searches": Json::array(searches) }
+  let json = self.request_json(Post, path, Some(body))
+  let result : Array[Array[ScoredPoint]]? = match json {
+    Object(members) =>
+      match members.get("result") {
+        Some(Array(groups)) => {
+          let out : Array[Array[ScoredPoint]] = []
+          for group in groups {
+            match group {
+              Array(hits_json) => {
+                let hits : Array[ScoredPoint] = []
+                for item in hits_json {
+                  match ScoredPoint::from_json(item) {
+                    Some(hit) => hits.push(hit)
+                    None =>
+                      raise Failure(
+                        "unexpected batch search hit: " + json.stringify(),
+                      )
+                  }
+                }
+                out.push(hits)
+              }
+              _ =>
+                raise Failure(
+                  "unexpected batch search response: " + json.stringify(),
+                )
+            }
+          }
+          Some(out)
+        }
+        _ => None
+      }
+    _ => None
+  }
+  match result {
+    Some(out) => out
+    None =>
+      raise Failure("unexpected batch search response: " + json.stringify())
+  }
+}
+
+///|
+/// Set (merge) a payload on the given points via
+/// `PUT /collections/{name}/points/payload`.
+///
+/// Pass either `ids` or `filter` to select the target points. The payload
+/// fields are merged into each point's existing payload.
+pub async fn QdrantClient::set_payload(
+  self : QdrantClient,
+  name : String,
+  payload : Json,
+  ids? : Array[Int]? = None,
+  filter? : Filter? = None,
+  wait? : Bool = true,
+) -> Unit {
+  let path = "/collections/" + name + "/points/payload?wait=" + wait.to_string()
+  let body = payload_operation_body(payload, ids, filter)
+  let json = self.request_json(Put, path, Some(body))
+  ignore(json)
+}
+
+///|
+/// Overwrite the payload of the given points via
+/// `POST /collections/{name}/points/payload`.
+///
+/// Unlike `set_payload`, the whole payload is replaced by the given object.
+pub async fn QdrantClient::overwrite_payload(
+  self : QdrantClient,
+  name : String,
+  payload : Json,
+  ids? : Array[Int]? = None,
+  filter? : Filter? = None,
+  wait? : Bool = true,
+) -> Unit {
+  let path = "/collections/" + name + "/points/payload?wait=" + wait.to_string()
+  let body = payload_operation_body(payload, ids, filter)
+  let json = self.request_json(Post, path, Some(body))
+  ignore(json)
+}
+
+///|
+/// Delete the whole payload of the selected points via
+/// `POST /collections/{name}/points/payload/delete`.
+///
+/// Pass either `ids` or `filter` to select the target points. To remove only
+/// some keys, use `delete_payload_by_keys`.
+pub async fn QdrantClient::delete_payload(
+  self : QdrantClient,
+  name : String,
+  ids? : Array[Int]? = None,
+  filter? : Filter? = None,
+  wait? : Bool = true,
+) -> Unit {
+  let path = "/collections/" +
+    name +
+    "/points/payload/delete?wait=" +
+    wait.to_string()
+  let body = payload_operation_body(Json::object({}), ids, filter)
+  let json = self.request_json(Post, path, Some(body))
+  ignore(json)
+}
+
+///|
+/// Delete only the listed payload keys from the selected points via
+/// `POST /collections/{name}/points/payload/delete`.
+///
+/// Pass either `ids` or `filter` to select the target points.
+pub async fn QdrantClient::delete_payload_by_keys(
+  self : QdrantClient,
+  name : String,
+  keys : Array[String],
+  ids? : Array[Int]? = None,
+  filter? : Filter? = None,
+  wait? : Bool = true,
+) -> Unit {
+  let path = "/collections/" +
+    name +
+    "/points/payload/delete?wait=" +
+    wait.to_string()
+  let key_json : Array[Json] = []
+  for key in keys {
+    key_json.push(Json::string(key))
+  }
+  let body = payload_operation_body(Json::object({}), ids, filter)
+  let members = match body {
+    Object(m) => m
+    _ => Map([])
+  }
+  members["payload"] = Json::array(key_json)
+  let json = self.request_json(Post, path, Some(Json::object(members)))
+  ignore(json)
+}
+
+///|
+/// Build the shared body for payload write operations: `{ "payload": ... }`
+/// plus either `"points": [ids]` or `"filter": ...`.
+fn payload_operation_body(
+  payload : Json,
+  ids : Array[Int]?,
+  filter : Filter?,
+) -> Json {
+  let members : Map[String, Json] = Map([])
+  members["payload"] = payload
+  match ids {
+    Some(ids_arr) => {
+      let id_json : Array[Json] = []
+      for id in ids_arr {
+        id_json.push(Json::number(id.to_double()))
+      }
+      members["points"] = Json::array(id_json)
+    }
+    None => ()
+  }
+  match filter {
+    Some(f) => members["filter"] = f.to_json()
+    None => ()
+  }
+  Json::object(members)
+}
+
+///|
+/// Update collection settings via `PATCH /collections/{name}`.
+///
+/// See `CollectionUpdate` for which settings can be changed.
+pub async fn QdrantClient::update_collection(
+  self : QdrantClient,
+  name : String,
+  update : CollectionUpdate,
+) -> Unit {
+  let path = "/collections/" + name
+  let json = self.request_json(Patch, path, Some(update.to_json()))
+  ignore(json)
+}
+
+///|
+/// Create a payload index on a field via
+/// `PUT /collections/{name}/indexes/{field}`.
+///
+/// `schema` is the field schema, for example `"keyword"`, `"integer"`,
+/// `"float"`, `"geo"`, `"bool"`, `"text"` or `"uuid"`. Creating an index
+/// speeds up filtered access to that payload field.
+pub async fn QdrantClient::create_payload_index(
+  self : QdrantClient,
+  name : String,
+  field : String,
+  schema : String,
+  wait? : Bool = true,
+) -> Unit {
+  let path = "/collections/" +
+    name +
+    "/indexes/" +
+    field +
+    "?wait=" +
+    wait.to_string()
+  let body : Json = { "field_schema": Json::string(schema) }
+  let json = self.request_json(Put, path, Some(body))
+  ignore(json)
+}
+
+///|
+/// Delete a payload index via `DELETE /collections/{name}/indexes/{field}`.
+pub async fn QdrantClient::delete_payload_index(
+  self : QdrantClient,
+  name : String,
+  field : String,
+  wait? : Bool = true,
+) -> Unit {
+  let path = "/collections/" +
+    name +
+    "/indexes/" +
+    field +
+    "?wait=" +
+    wait.to_string()
+  let json = self.request_json(Delete, path, None)
+  ignore(json)
+}
+
+///|
+/// List the payload indexes of a collection via
+/// `GET /collections/{name}/indexes`.
+pub async fn QdrantClient::list_payload_indexes(
+  self : QdrantClient,
+  name : String,
+) -> Array[PayloadIndexInfo] {
+  let path = "/collections/" + name + "/indexes"
+  let json = self.request_json(Get, path, None)
+  match parse_payload_indexes(json) {
+    Some(indexes) => indexes
+    None =>
+      raise Failure("unexpected payload indexes response: " + json.stringify())
+  }
+}
+
+///|
+/// List the snapshots of a collection via
+/// `GET /collections/{name}/snapshots`.
+pub async fn QdrantClient::list_snapshots(
+  self : QdrantClient,
+  name : String,
+) -> Array[SnapshotInfo] {
+  let path = "/collections/" + name + "/snapshots"
+  let json = self.request_json(Get, path, None)
+  match parse_snapshots(json) {
+    Some(snapshots) => snapshots
+    None => raise Failure("unexpected snapshots response: " + json.stringify())
+  }
+}
+
+///|
+/// Create a snapshot of a collection via `POST /collections/{name}/snapshots`.
+/// Snapshots can be downloaded from the storage and used to restore or
+/// migrate a collection.
+pub async fn QdrantClient::create_snapshot(
+  self : QdrantClient,
+  name : String,
+  wait? : Bool = true,
+) -> SnapshotInfo {
+  let path = "/collections/" + name + "/snapshots?wait=" + wait.to_string()
+  let json = self.request_json(Post, path, None)
+  match json {
+    Object(members) =>
+      match members.get("result") {
+        Some(result) =>
+          match SnapshotInfo::from_json(result) {
+            Some(info) => info
+            None =>
+              raise Failure("unexpected snapshot response: " + json.stringify())
+          }
+        None =>
+          raise Failure("unexpected snapshot response: " + json.stringify())
+      }
+    _ => raise Failure("unexpected snapshot response: " + json.stringify())
+  }
+}
+
+///|
+/// Delete a snapshot via `DELETE /collections/{name}/snapshots/{snapshot}`.
+pub async fn QdrantClient::delete_snapshot(
+  self : QdrantClient,
+  name : String,
+  snapshot : String,
+  wait? : Bool = true,
+) -> Unit {
+  let path = "/collections/" +
+    name +
+    "/snapshots/" +
+    snapshot +
+    "?wait=" +
+    wait.to_string()
+  let json = self.request_json(Delete, path, None)
   ignore(json)
 }
