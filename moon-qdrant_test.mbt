@@ -914,3 +914,449 @@ test "service info parses version and commit" {
     None => fail("expected service info")
   }
 }
+
+///|
+
+///|
+/// A JSON number whose textual representation keeps the exact u64 value.
+fn exact_num(text : String) -> Json {
+  // The double is only a fallback; the repr keeps the exact u64 text.
+  Json::number(Double::from_int(0), repr=text)
+}
+
+///|
+test "parse_int64 reads signed and unsigned decimal text" {
+  match @moon-qdrant.parse_int64("42") {
+    Some(v) => assert_true(v == 42L)
+    None => fail("expected 42")
+  }
+  match @moon-qdrant.parse_int64("-7") {
+    Some(v) => assert_true(v == -7L)
+    None => fail("expected -7")
+  }
+  match @moon-qdrant.parse_int64("4992814939605239476") {
+    Some(v) => assert_true(v.to_string() == "4992814939605239476")
+    None => fail("expected the full u64 value")
+  }
+}
+
+///|
+test "parse_int64 rejects malformed input" {
+  assert_true(@moon-qdrant.parse_int64("") is None)
+  assert_true(@moon-qdrant.parse_int64("-") is None)
+  assert_true(@moon-qdrant.parse_int64("12a") is None)
+  assert_true(@moon-qdrant.parse_int64("1.5") is None)
+}
+
+///|
+test "int64_of_json keeps the exact value via the textual representation" {
+  // Json::number with an explicit repr preserves the original decimal text,
+  // so u64 peer ids survive exactly as the Qdrant server sent them.
+  let json = Json::object({ "peer_id": exact_num("4992814939605239476") })
+  match json {
+    Object(members) =>
+      match @moon-qdrant.int64_of_json(members["peer_id"]) {
+        Some(v) => assert_true(v.to_string() == "4992814939605239476")
+        None => fail("expected the full u64 value")
+      }
+    _ => fail("expected an object")
+  }
+}
+
+///|
+test "int64_of_json falls back to the double for repr-less numbers" {
+  let json = Json::number(7.0)
+  match @moon-qdrant.int64_of_json(json) {
+    Some(v) => assert_true(v == 7L)
+    None => fail("expected 7")
+  }
+  assert_true(@moon-qdrant.int64_of_json(Json::string("x")) is None)
+}
+
+///|
+test "int64_to_json serializes as a plain number" {
+  let json = @moon-qdrant.int64_to_json(12L)
+  match json {
+    Number(n, ..) => assert_true(n == 12.0)
+    _ => fail("expected a number")
+  }
+}
+
+///|
+test "peer info parses uri and heartbeat fields" {
+  let parsed = Json::object({
+    "uri": Json::string("http://peer:6335"),
+    "last_hb_secs_ago": exact_num("3"),
+    "last_resp_secs_ago": Json::null(),
+    "last_update_secs_ago": exact_num("0"),
+  })
+  match @moon-qdrant.PeerInfo::from_json(parsed) {
+    Some(info) => {
+      match info.uri {
+        Some(u) => assert_true(u == "http://peer:6335")
+        None => fail("expected uri")
+      }
+      match info.last_hb_secs_ago {
+        Some(v) => assert_true(v == 3L)
+        None => fail("expected last_hb_secs_ago")
+      }
+      assert_true(info.last_resp_secs_ago is None)
+    }
+    None => fail("expected peer info")
+  }
+}
+
+///|
+test "raft info parses leader, role and voter flag" {
+  let parsed = Json::object({
+    "term": exact_num("1"),
+    "commit": exact_num("3"),
+    "pending_operations": exact_num("0"),
+    "leader": exact_num("4992814939605239476"),
+    "role": Json::string("Leader"),
+    "is_voter": Json::boolean(true),
+  })
+  match @moon-qdrant.RaftInfo::from_json(parsed) {
+    Some(raft) => {
+      match raft.role {
+        Some(r) => assert_true(r == "Leader")
+        None => fail("expected role")
+      }
+      match raft.is_voter {
+        Some(v) => assert_true(v)
+        None => fail("expected is_voter")
+      }
+      match raft.leader {
+        Some(v) => assert_true(v.to_string() == "4992814939605239476")
+        None => fail("expected leader")
+      }
+    }
+    None => fail("expected raft info")
+  }
+}
+
+///|
+test "cluster info parses the full result object" {
+  let parsed = Json::object({
+    "status": Json::string("enabled"),
+    "peer_id": exact_num("4992814939605239476"),
+    "peers": Json::object({
+      "4992814939605239476": Json::object({
+        "uri": Json::string("http://qdrant-0:6335"),
+        "last_hb_secs_ago": exact_num("0"),
+      }),
+    }),
+    "raft_info": Json::object({
+      "term": exact_num("1"),
+      "commit": exact_num("3"),
+      "pending_operations": exact_num("0"),
+      "leader": exact_num("4992814939605239476"),
+      "role": Json::string("Leader"),
+      "is_voter": Json::boolean(true),
+    }),
+  })
+  match @moon-qdrant.ClusterInfo::from_json(parsed) {
+    Some(info) => {
+      assert_true(info.status == "enabled")
+      assert_true(info.peer_id.to_string() == "4992814939605239476")
+      assert_true(info.peers.length() == 1)
+      match info.peers.get("4992814939605239476") {
+        Some(peer) =>
+          match peer.uri {
+            Some(u) => assert_true(u == "http://qdrant-0:6335")
+            None => fail("expected peer uri")
+          }
+        None => fail("expected the peer entry")
+      }
+      match info.raft_info {
+        Some(raft) =>
+          match raft.role {
+            Some(r) => assert_true(r == "Leader")
+            None => fail("expected role")
+          }
+        None => fail("expected raft info")
+      }
+    }
+    None => fail("expected cluster info")
+  }
+}
+
+///|
+test "collection cluster info parses local, remote shards and transfers" {
+  let parsed = Json::object({
+    "peer_id": exact_num("4992814939605239476"),
+    "shard_count": exact_num("1"),
+    "local_shards": Json::array([
+      Json::object({
+        "shard_id": exact_num("0"),
+        "points_count": exact_num("3761"),
+        "state": Json::string("Active"),
+      }),
+    ]),
+    "remote_shards": Json::array([
+      Json::object({
+        "shard_id": exact_num("0"),
+        "peer_id": exact_num("4992814939605239477"),
+        "state": Json::string("Active"),
+      }),
+    ]),
+    "shard_transfers": Json::array([
+      Json::object({
+        "shard_id": exact_num("0"),
+        "from": exact_num("4992814939605239476"),
+        "to": exact_num("4992814939605239477"),
+        "method": Json::string("stream_records"),
+      }),
+    ]),
+  })
+  match @moon-qdrant.CollectionClusterInfo::from_json(parsed) {
+    Some(info) => {
+      assert_true(info.shard_count == 1L)
+      assert_true(info.local_shards.length() == 1)
+      assert_true(info.local_shards[0].points_count == 3761L)
+      assert_true(info.local_shards[0].state == "Active")
+      assert_true(info.remote_shards.length() == 1)
+      assert_true(
+        info.remote_shards[0].peer_id.to_string() == "4992814939605239477",
+      )
+      assert_true(info.shard_transfers.length() == 1)
+      assert_true(
+        info.shard_transfers[0].to.to_string() == "4992814939605239477",
+      )
+      match info.shard_transfers[0].method_name {
+        Some(m) => assert_true(m == "stream_records")
+        None => fail("expected transfer method")
+      }
+    }
+    None => fail("expected collection cluster info")
+  }
+}
+
+///|
+test "collection cluster op body builds a replicate_shard payload" {
+  let body = @moon-qdrant.collection_cluster_op_body(
+    "replicate_shard",
+    0L,
+    from_peer_id=Some(1L),
+    to_peer_id=Some(2L),
+  )
+  match body {
+    Object(members) => {
+      match members.get("method") {
+        Some(String(s)) => assert_true(s == "replicate_shard")
+        _ => fail("expected method")
+      }
+      match members.get("from_peer_id") {
+        Some(Number(n, ..)) => assert_true(n == 1.0)
+        _ => fail("expected from_peer_id")
+      }
+      match members.get("to_peer_id") {
+        Some(Number(n, ..)) => assert_true(n == 2.0)
+        _ => fail("expected to_peer_id")
+      }
+      assert_true(members.get("peer_id") is None)
+    }
+    _ => fail("expected an object")
+  }
+}
+
+///|
+test "collection cluster op body builds a replica lifecycle payload" {
+  let body = @moon-qdrant.collection_cluster_op_body(
+    "create_shard_replica",
+    3L,
+    peer_id=Some(9L),
+  )
+  match body {
+    Object(members) => {
+      match members.get("method") {
+        Some(String(s)) => assert_true(s == "create_shard_replica")
+        _ => fail("expected method")
+      }
+      match members.get("shard_id") {
+        Some(Number(n, ..)) => assert_true(n == 3.0)
+        _ => fail("expected shard_id")
+      }
+      match members.get("peer_id") {
+        Some(Number(n, ..)) => assert_true(n == 9.0)
+        _ => fail("expected peer_id")
+      }
+      assert_true(members.get("from_peer_id") is None)
+      assert_true(members.get("to_peer_id") is None)
+    }
+    _ => fail("expected an object")
+  }
+}
+
+///|
+test "malformed models return None instead of raising" {
+  // cluster info needs status, peer_id and peers
+  assert_true(@moon-qdrant.ClusterInfo::from_json(Json::object({})) is None)
+  // peer info must be an object
+  assert_true(@moon-qdrant.PeerInfo::from_json(Json::string("x")) is None)
+  // raft info must be an object
+  assert_true(@moon-qdrant.RaftInfo::from_json(Json::number(1.0)) is None)
+  // local shard requires shard_id, points_count and state
+  assert_true(
+    @moon-qdrant.LocalShardInfo::from_json(Json::object({ "shard_id": 0 }))
+    is None,
+  )
+  // collection cluster info requires all sections
+  assert_true(
+    @moon-qdrant.CollectionClusterInfo::from_json(Json::object({})) is None,
+  )
+}
+
+///|
+test "model parsers reject malformed input instead of raising" {
+  // VectorParams: missing size or distance
+  assert_true(
+    @moon-qdrant.VectorParams::from_json(Json::object({ "size": 4 })) is None,
+  )
+  assert_true(
+    @moon-qdrant.VectorParams::from_json(Json::object({ "distance": "Cosine" }))
+    is None,
+  )
+  assert_true(@moon-qdrant.VectorParams::from_json(Json::string("x")) is None)
+  // PointStruct: missing id
+  assert_true(
+    @moon-qdrant.PointStruct::from_json(Json::object({ "vector": [1.0, 2.0] }))
+    is None,
+  )
+  // PointStruct: empty vector array
+  assert_true(
+    @moon-qdrant.PointStruct::from_json(
+      Json::object({ "id": 1, "vector": Json::array([]) }),
+    )
+    is None,
+  )
+  // PointStruct: non-numeric vector element
+  assert_true(
+    @moon-qdrant.PointStruct::from_json(
+      Json::object({ "id": 1, "vector": Json::array([Json::string("x")]) }),
+    )
+    is None,
+  )
+  // PointStruct: named vectors empty map
+  assert_true(
+    @moon-qdrant.PointStruct::from_json(
+      Json::object({ "id": 1, "vector": Json::object({}) }),
+    )
+    is None,
+  )
+  // CollectionList: missing result
+  assert_true(
+    @moon-qdrant.CollectionList::from_json(Json::object({ "status": "ok" }))
+    is None,
+  )
+  // search result: result is not an array
+  assert_true(
+    @moon-qdrant.parse_search_result(
+      Json::object({ "result": Json::object({}) }),
+    )
+    is None,
+  )
+  // search result: hit entry is malformed
+  assert_true(
+    @moon-qdrant.parse_search_result(
+      Json::object({ "result": Json::array([Json::string("x")]) }),
+    )
+    is None,
+  )
+  // count result: missing count
+  assert_true(@moon-qdrant.parse_count_result(Json::object({})) is None)
+  // retrieve result: result is not an array
+  assert_true(
+    @moon-qdrant.parse_retrieve_result(
+      Json::object({ "result": Json::object({}) }),
+    )
+    is None,
+  )
+  // aliases: result is not an array
+  assert_true(
+    @moon-qdrant.parse_aliases(Json::object({ "result": Json::object({}) }))
+    is None,
+  )
+  // snapshots: result is not an array
+  assert_true(
+    @moon-qdrant.parse_snapshots(Json::object({ "result": Json::object({}) }))
+    is None,
+  )
+  // payload indexes: result is not an array
+  assert_true(
+    @moon-qdrant.parse_payload_indexes(
+      Json::object({ "result": Json::object({}) }),
+    )
+    is None,
+  )
+  // facet result: missing hits
+  assert_true(
+    @moon-qdrant.FacetResult::from_json(Json::object({ "exact": true })) is None,
+  )
+  // query result: result is not an array
+  assert_true(
+    @moon-qdrant.parse_query_result(
+      Json::object({ "result": Json::object({}) }),
+    )
+    is None,
+  )
+  // search groups: result without groups
+  assert_true(
+    @moon-qdrant.parse_search_groups(
+      Json::object({ "result": Json::object({}) }),
+    )
+    is None,
+  )
+  // collection lock: write flag must be a boolean
+  assert_true(
+    @moon-qdrant.CollectionLock::from_json(
+      Json::object({ "write": Json::string("yes") }),
+    )
+    is None,
+  )
+  // service info must be an object
+  assert_true(@moon-qdrant.ServiceInfo::from_json(Json::number(1.0)) is None)
+}
+
+///|
+test "nested parser guards reject bad entries inside arrays and maps" {
+  // scored point: missing id or score
+  assert_true(
+    @moon-qdrant.ScoredPoint::from_json(Json::object({ "score": 0.5 })) is None,
+  )
+  assert_true(
+    @moon-qdrant.ScoredPoint::from_json(Json::object({ "id": 1 })) is None,
+  )
+  // search groups: a group entry that is not an object
+  assert_true(
+    @moon-qdrant.parse_search_groups(
+      Json::object({ "result": Json::object({ "groups": [1.0] }) }),
+    )
+    is None,
+  )
+  // cluster info: a peer entry that does not parse
+  let bad_peer = Json::object({
+    "status": "enabled",
+    "peer_id": Json::number(1.0),
+    "peers": Json::object({ "1": Json::string("not-an-object") }),
+  })
+  assert_true(@moon-qdrant.ClusterInfo::from_json(bad_peer) is None)
+  // collection cluster info: a local shard entry that does not parse
+  let bad_shard = Json::object({
+    "peer_id": Json::number(1.0),
+    "shard_count": Json::number(1.0),
+    "local_shards": Json::array([Json::object({ "shard_id": 0 })]),
+    "remote_shards": Json::array([]),
+    "shard_transfers": Json::array([]),
+  })
+  assert_true(@moon-qdrant.CollectionClusterInfo::from_json(bad_shard) is None)
+  // collection cluster info: remote shards must be an array
+  let bad_remote = Json::object({
+    "peer_id": Json::number(1.0),
+    "shard_count": Json::number(1.0),
+    "local_shards": Json::array([]),
+    "remote_shards": Json::object({}),
+    "shard_transfers": Json::array([]),
+  })
+  assert_true(@moon-qdrant.CollectionClusterInfo::from_json(bad_remote) is None)
+}

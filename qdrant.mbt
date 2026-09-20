@@ -1177,3 +1177,173 @@ pub async fn QdrantClient::service_info(self : QdrantClient) -> ServiceInfo {
       raise Failure("unexpected service info response: " + json.stringify())
   }
 }
+
+///|
+/// Build the request body for a collection cluster operation
+/// (`POST /collections/{name}/cluster`). `op` is one of the Qdrant operation
+/// names: `replicate_shard`, `create_shard_replica`, `delete_shard_replica`,
+/// `abort_transfer`, ...
+pub fn collection_cluster_op_body(
+  op : String,
+  shard_id : Int64,
+  peer_id? : Int64? = None,
+  from_peer_id? : Int64? = None,
+  to_peer_id? : Int64? = None,
+) -> Json {
+  let members : Map[String, Json] = Map([])
+  members["method"] = Json::string(op)
+  members["shard_id"] = int64_to_json(shard_id)
+  match peer_id {
+    Some(v) => members["peer_id"] = int64_to_json(v)
+    None => ()
+  }
+  match from_peer_id {
+    Some(v) => members["from_peer_id"] = int64_to_json(v)
+    None => ()
+  }
+  match to_peer_id {
+    Some(v) => members["to_peer_id"] = int64_to_json(v)
+    None => ()
+  }
+  Json::object(members)
+}
+
+///|
+/// Read the overall cluster state via `GET /cluster`: status, local peer id,
+/// the peer map and raft consensus info.
+pub async fn QdrantClient::cluster_info(self : QdrantClient) -> ClusterInfo {
+  let json = self.request_json(Get, "/cluster", None)
+  match json {
+    Object(members) =>
+      match members.get("result") {
+        Some(result) =>
+          match ClusterInfo::from_json(result) {
+            Some(info) => info
+            None =>
+              raise Failure("unexpected cluster response: " + json.stringify())
+          }
+        None =>
+          raise Failure("unexpected cluster response: " + json.stringify())
+      }
+    _ => raise Failure("unexpected cluster response: " + json.stringify())
+  }
+}
+
+///|
+/// Read the per-collection cluster layout via
+/// `GET /collections/{name}/cluster`: local and remote shard replicas plus
+/// in-flight transfers.
+pub async fn QdrantClient::collection_cluster_info(
+  self : QdrantClient,
+  name : String,
+) -> CollectionClusterInfo {
+  let path = "/collections/" + name + "/cluster"
+  let json = self.request_json(Get, path, None)
+  match json {
+    Object(members) =>
+      match members.get("result") {
+        Some(result) =>
+          match CollectionClusterInfo::from_json(result) {
+            Some(info) => info
+            None =>
+              raise Failure(
+                "unexpected collection cluster response: " + json.stringify(),
+              )
+          }
+        None =>
+          raise Failure(
+            "unexpected collection cluster response: " + json.stringify(),
+          )
+      }
+    _ =>
+      raise Failure(
+        "unexpected collection cluster response: " + json.stringify(),
+      )
+  }
+}
+
+///|
+/// Replicate a shard to another peer via
+/// `POST /collections/{name}/cluster` with method `replicate_shard`.
+pub async fn QdrantClient::replicate_shard(
+  self : QdrantClient,
+  name : String,
+  shard_id : Int64,
+  from_peer_id : Int64,
+  to_peer_id : Int64,
+) -> Bool {
+  let path = "/collections/" + name + "/cluster"
+  let body = collection_cluster_op_body(
+    "replicate_shard",
+    shard_id,
+    from_peer_id=Some(from_peer_id),
+    to_peer_id=Some(to_peer_id),
+  )
+  let json = self.request_json(Post, path, Some(body))
+  match json {
+    Object(members) =>
+      match members.get("result") {
+        Some(True) => true
+        Some(False) => false
+        _ =>
+          raise Failure("unexpected cluster op response: " + json.stringify())
+      }
+    _ => raise Failure("unexpected cluster op response: " + json.stringify())
+  }
+}
+
+///|
+/// Create a new shard replica on a peer via
+/// `POST /collections/{name}/cluster` with method `create_shard_replica`.
+pub async fn QdrantClient::create_shard_replica(
+  self : QdrantClient,
+  name : String,
+  shard_id : Int64,
+  peer_id : Int64,
+) -> Bool {
+  let path = "/collections/" + name + "/cluster"
+  let body = collection_cluster_op_body(
+    "create_shard_replica",
+    shard_id,
+    peer_id=Some(peer_id),
+  )
+  let json = self.request_json(Post, path, Some(body))
+  match json {
+    Object(members) =>
+      match members.get("result") {
+        Some(True) => true
+        Some(False) => false
+        _ =>
+          raise Failure("unexpected cluster op response: " + json.stringify())
+      }
+    _ => raise Failure("unexpected cluster op response: " + json.stringify())
+  }
+}
+
+///|
+/// Delete a shard replica from a peer via
+/// `POST /collections/{name}/cluster` with method `delete_shard_replica`.
+pub async fn QdrantClient::delete_shard_replica(
+  self : QdrantClient,
+  name : String,
+  shard_id : Int64,
+  peer_id : Int64,
+) -> Bool {
+  let path = "/collections/" + name + "/cluster"
+  let body = collection_cluster_op_body(
+    "delete_shard_replica",
+    shard_id,
+    peer_id=Some(peer_id),
+  )
+  let json = self.request_json(Post, path, Some(body))
+  match json {
+    Object(members) =>
+      match members.get("result") {
+        Some(True) => true
+        Some(False) => false
+        _ =>
+          raise Failure("unexpected cluster op response: " + json.stringify())
+      }
+    _ => raise Failure("unexpected cluster op response: " + json.stringify())
+  }
+}

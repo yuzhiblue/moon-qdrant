@@ -34,13 +34,22 @@ All notable changes to moon-qdrant are documented here. The format follows
 - Collection write lock: `collection_lock` / `set_collection_lock` with
   `CollectionLock` model;
 - Server info: `service_info` with `ServiceInfo` model;
+- Cluster: `cluster_info` with `ClusterInfo` / `PeerInfo` / `RaftInfo`
+  models, `collection_cluster_info` with `CollectionClusterInfo` /
+  `LocalShardInfo` / `RemoteShardInfo` / `ShardTransferInfo` models, and
+  shard operations `replicate_shard` / `create_shard_replica` /
+  `delete_shard_replica`;
 - CI now runs `moon check --target native --deny-warn`;
 - Data models: `NamedVector`, `SearchParams`, `SnapshotInfo`,
   `PayloadIndexInfo`, `CollectionUpdate`, `FacetHit`, `FacetResult`,
-  `ScoredPointGroup`, `CollectionLock`, `ServiceInfo` with JSON conversion
-  and parsing;
-- 21 new unit tests (serialization and parsing for all of the above), demo
-  extended to exercise every new capability.
+  `ScoredPointGroup`, `CollectionLock`, `ServiceInfo`, `ClusterInfo`,
+  `PeerInfo`, `RaftInfo`, `CollectionClusterInfo`, `LocalShardInfo`,
+  `RemoteShardInfo`, `ShardTransferInfo` with JSON conversion and parsing;
+  u64 ids (peer ids, shard ids) are decoded from their exact textual
+  representation via `parse_int64` / `int64_of_json`;
+- 35 new unit tests (serialization, parsing, request-body construction and
+  malformed-input guards for all of the above), demo extended to exercise
+  every new capability.
 
 ### Changed
 

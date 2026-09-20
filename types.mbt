@@ -1094,3 +1094,371 @@ pub fn ServiceInfo::from_json(json : Json) -> ServiceInfo? {
   }
   Some({ version, commit, })
 }
+
+///|
+/// Parse a base-10 integer string into an Int64, tolerating a leading '-'.
+/// Used to decode large JSON numbers (peer ids, shard ids) from their
+/// original textual representation without precision loss.
+pub fn parse_int64(s : String) -> Int64? {
+  if s.is_empty() {
+    return None
+  }
+  let mut i = 0
+  let mut neg = false
+  if s[0] == '-' {
+    neg = true
+    i = 1
+  }
+  if i >= s.length() {
+    return None
+  }
+  let mut acc = 0L
+  while i < s.length() {
+    let c = s[i]
+    if c < '0' || c > '9' {
+      return None
+    }
+    acc = acc * 10L + Int64::from_int(c.to_int() - 48)
+    i = i + 1
+  }
+  if neg {
+    Some(-acc)
+  } else {
+    Some(acc)
+  }
+}
+
+///|
+/// Read an integer from a JSON number, using the original textual
+/// representation when available so u64 values survive without loss.
+pub fn int64_of_json(json : Json) -> Int64? {
+  match json {
+    Number(n, repr~) =>
+      match repr {
+        Some(s) => parse_int64(s)
+        None => Some(Int64::from_int(n.to_int()))
+      }
+    _ => None
+  }
+}
+
+///|
+/// Serialize an Int64 as a JSON number. Values within the exact-double range
+/// (|v| < 2^53) round-trip losslessly; peer ids from Qdrant are u64 but in
+/// practice stay well below that bound.
+pub fn int64_to_json(v : Int64) -> Json {
+  Json::number(v.to_double())
+}
+
+///|
+/// Parse an optional bool that may be absent from the wire.
+fn optional_bool(json : Json) -> Bool? {
+  match json {
+    True => Some(true)
+    False => Some(false)
+    _ => None
+  }
+}
+
+///|
+/// A remote peer of the cluster, as reported by GET /cluster.
+pub struct PeerInfo {
+  uri : String?
+  last_hb_secs_ago : Int64?
+  last_resp_secs_ago : Int64?
+  last_update_secs_ago : Int64?
+}
+
+///|
+/// Parse one peer entry: `{ "uri": "...", "last_hb_secs_ago": 0, ... }`.
+pub fn PeerInfo::from_json(json : Json) -> PeerInfo? {
+  guard json is Object(members) else { return None }
+  let uri = match members.get("uri") {
+    Some(String(s)) => Some(s)
+    _ => None
+  }
+  let last_hb_secs_ago = match members.get("last_hb_secs_ago") {
+    Some(n) => int64_of_json(n)
+    _ => None
+  }
+  let last_resp_secs_ago = match members.get("last_resp_secs_ago") {
+    Some(n) => int64_of_json(n)
+    _ => None
+  }
+  let last_update_secs_ago = match members.get("last_update_secs_ago") {
+    Some(n) => int64_of_json(n)
+    _ => None
+  }
+  Some({ uri, last_hb_secs_ago, last_resp_secs_ago, last_update_secs_ago, })
+}
+
+///|
+/// Raft consensus state of the cluster.
+pub struct RaftInfo {
+  term : Int64?
+  commit : Int64?
+  pending_operations : Int64?
+  leader : Int64?
+  role : String?
+  is_voter : Bool?
+}
+
+///|
+/// Parse the `raft_info` object of a cluster response.
+pub fn RaftInfo::from_json(json : Json) -> RaftInfo? {
+  guard json is Object(members) else { return None }
+  let term = match members.get("term") {
+    Some(n) => int64_of_json(n)
+    _ => None
+  }
+  let commit = match members.get("commit") {
+    Some(n) => int64_of_json(n)
+    _ => None
+  }
+  let pending_operations = match members.get("pending_operations") {
+    Some(n) => int64_of_json(n)
+    _ => None
+  }
+  let leader = match members.get("leader") {
+    Some(n) => int64_of_json(n)
+    _ => None
+  }
+  let role = match members.get("role") {
+    Some(String(s)) => Some(s)
+    _ => None
+  }
+  let is_voter = match members.get("is_voter") {
+    Some(b) => optional_bool(b)
+    _ => None
+  }
+  Some({ term, commit, pending_operations, leader, role, is_voter, })
+}
+
+///|
+/// Overall cluster state, from `GET /cluster`.
+pub struct ClusterInfo {
+  status : String
+  peer_id : Int64
+  peers : Map[String, PeerInfo]
+  raft_info : RaftInfo?
+}
+
+///|
+/// Parse the cluster info result object.
+pub fn ClusterInfo::from_json(json : Json) -> ClusterInfo? {
+  guard json is Object(members) else { return None }
+  let status = match members.get("status") {
+    Some(String(s)) => s
+    _ => return None
+  }
+  let peer_id = match members.get("peer_id") {
+    Some(n) =>
+      match int64_of_json(n) {
+        Some(v) => v
+        None => return None
+      }
+    _ => return None
+  }
+  let peers : Map[String, PeerInfo] = Map([])
+  match members.get("peers") {
+    Some(Object(peer_map)) =>
+      for id in peer_map.keys() {
+        match PeerInfo::from_json(peer_map[id]) {
+          Some(info) => peers[id] = info
+          None => return None
+        }
+      }
+    _ => return None
+  }
+  let raft_info = match members.get("raft_info") {
+    Some(raft) => RaftInfo::from_json(raft)
+    None => None
+  }
+  Some({ status, peer_id, peers, raft_info, })
+}
+
+///|
+/// A shard replica hosted on the local node.
+pub struct LocalShardInfo {
+  shard_id : Int64
+  points_count : Int64
+  state : String
+}
+
+///|
+/// Parse one local shard entry: `{ "shard_id": 0, "points_count": 10, "state": "Active" }`.
+pub fn LocalShardInfo::from_json(json : Json) -> LocalShardInfo? {
+  guard json is Object(members) else { return None }
+  let shard_id = match members.get("shard_id") {
+    Some(n) =>
+      match int64_of_json(n) {
+        Some(v) => v
+        None => return None
+      }
+    _ => return None
+  }
+  let points_count = match members.get("points_count") {
+    Some(n) =>
+      match int64_of_json(n) {
+        Some(v) => v
+        None => return None
+      }
+    _ => return None
+  }
+  let state = match members.get("state") {
+    Some(String(s)) => s
+    _ => return None
+  }
+  Some({ shard_id, points_count, state, })
+}
+
+///|
+/// A shard replica hosted on a remote peer.
+pub struct RemoteShardInfo {
+  shard_id : Int64
+  peer_id : Int64
+  state : String
+}
+
+///|
+/// Parse one remote shard entry: `{ "shard_id": 0, "peer_id": 1, "state": "Active" }`.
+pub fn RemoteShardInfo::from_json(json : Json) -> RemoteShardInfo? {
+  guard json is Object(members) else { return None }
+  let shard_id = match members.get("shard_id") {
+    Some(n) =>
+      match int64_of_json(n) {
+        Some(v) => v
+        None => return None
+      }
+    _ => return None
+  }
+  let peer_id = match members.get("peer_id") {
+    Some(n) =>
+      match int64_of_json(n) {
+        Some(v) => v
+        None => return None
+      }
+    _ => return None
+  }
+  let state = match members.get("state") {
+    Some(String(s)) => s
+    _ => return None
+  }
+  Some({ shard_id, peer_id, state, })
+}
+
+///|
+/// An in-flight shard transfer between two peers.
+pub struct ShardTransferInfo {
+  shard_id : Int64
+  from : Int64
+  to : Int64
+  method_name : String?
+}
+
+///|
+/// Parse one shard transfer entry.
+pub fn ShardTransferInfo::from_json(json : Json) -> ShardTransferInfo? {
+  guard json is Object(members) else { return None }
+  let shard_id = match members.get("shard_id") {
+    Some(n) =>
+      match int64_of_json(n) {
+        Some(v) => v
+        None => return None
+      }
+    _ => return None
+  }
+  let from = match members.get("from") {
+    Some(n) =>
+      match int64_of_json(n) {
+        Some(v) => v
+        None => return None
+      }
+    _ => return None
+  }
+  let to = match members.get("to") {
+    Some(n) =>
+      match int64_of_json(n) {
+        Some(v) => v
+        None => return None
+      }
+    _ => return None
+  }
+  let method_name = match members.get("method") {
+    Some(String(s)) => Some(s)
+    _ => None
+  }
+  Some({ shard_id, from, to, method_name, })
+}
+
+///|
+/// Per-collection cluster layout, from `GET /collections/{name}/cluster`.
+pub struct CollectionClusterInfo {
+  peer_id : Int64
+  shard_count : Int64
+  local_shards : Array[LocalShardInfo]
+  remote_shards : Array[RemoteShardInfo]
+  shard_transfers : Array[ShardTransferInfo]
+}
+
+///|
+/// Parse the collection cluster info result object.
+pub fn CollectionClusterInfo::from_json(json : Json) -> CollectionClusterInfo? {
+  guard json is Object(members) else { return None }
+  let peer_id = match members.get("peer_id") {
+    Some(n) =>
+      match int64_of_json(n) {
+        Some(v) => v
+        None => return None
+      }
+    _ => return None
+  }
+  let shard_count = match members.get("shard_count") {
+    Some(n) =>
+      match int64_of_json(n) {
+        Some(v) => v
+        None => return None
+      }
+    _ => return None
+  }
+  let parse_local : Array[LocalShardInfo] = []
+  match members.get("local_shards") {
+    Some(Array(arr)) =>
+      for item in arr {
+        match LocalShardInfo::from_json(item) {
+          Some(info) => parse_local.push(info)
+          None => return None
+        }
+      }
+    _ => return None
+  }
+  let parse_remote : Array[RemoteShardInfo] = []
+  match members.get("remote_shards") {
+    Some(Array(arr)) =>
+      for item in arr {
+        match RemoteShardInfo::from_json(item) {
+          Some(info) => parse_remote.push(info)
+          None => return None
+        }
+      }
+    _ => return None
+  }
+  let parse_transfers : Array[ShardTransferInfo] = []
+  match members.get("shard_transfers") {
+    Some(Array(arr)) =>
+      for item in arr {
+        match ShardTransferInfo::from_json(item) {
+          Some(info) => parse_transfers.push(info)
+          None => return None
+        }
+      }
+    _ => return None
+  }
+  Some({
+    peer_id,
+    shard_count,
+    local_shards: parse_local,
+    remote_shards: parse_remote,
+    shard_transfers: parse_transfers,
+  })
+}

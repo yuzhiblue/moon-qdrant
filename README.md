@@ -201,6 +201,39 @@ for group in groups {
 }
 ```
 
+### Cluster, locks and server info
+
+```moonbit nocheck
+// cluster state (works on single-node deployments too)
+let cluster = client.cluster_info()
+println("cluster status: " + cluster.status)
+println("peers: " + cluster.peers.length().to_string())
+
+// per-collection shard / replica layout
+let layout = client.collection_cluster_info("demo")
+for shard in layout.local_shards {
+  println(
+    "shard " + shard.shard_id.to_string() + ": " +
+    shard.state + " (" + shard.points_count.to_string() + " points)",
+  )
+}
+
+// shard lifecycle (multi-node clusters)
+client.replicate_shard("demo", 0L, 1L, 2L)
+client.create_shard_replica("demo", 0L, 2L)
+client.delete_shard_replica("demo", 0L, 2L)
+
+// write lock + server version
+client.set_collection_lock("demo", true, error_message=Some("maintenance"))
+let lock = client.collection_lock("demo")
+println("writes locked: " + lock.write.to_string())
+let info = client.service_info()
+match info.version {
+  Some(v) => println("qdrant version: " + v)
+  None => ()
+}
+```
+
 ### Collection updates, payload indexes and snapshots
 
 ```moonbit nocheck
@@ -271,11 +304,15 @@ Implemented:
 - [x] `GET|POST|DELETE /collections/{name}/snapshots` snapshot management
 - [x] `GET|POST /collections/{name}/lock` collection write lock
 - [x] `GET /service` server info (version / commit)
+- [x] `GET /cluster` cluster state (status, peers, raft info)
+- [x] `GET /collections/{name}/cluster` per-collection shard / replica layout
+- [x] `POST /collections/{name}/cluster` shard operations
+  (`replicate_shard`, `create_shard_replica`, `delete_shard_replica`)
 - [x] unified `VectorProvider` trait (extensible to other vector services)
 
 Planned:
 
-- [ ] cluster endpoints (node management, replicas)
+- [ ] cluster telemetry (`GET /cluster/telemetry`)
 
 ## Development
 

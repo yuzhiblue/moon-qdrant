@@ -211,5 +211,21 @@ async fn main {
   client.delete_collection(named_collection)
   println("deleted named-vector collection: " + named_collection)
 
+  // cluster: single-node deployments still answer these endpoints
+  let cluster = client.cluster_info()
+  println(
+    "cluster status=" +
+    cluster.status +
+    " peers=" +
+    cluster.peers.length().to_string(),
+  )
+  let lock = client.collection_lock(collection)
+  println("collection lock write=" + lock.write.to_string())
+  let info = client.service_info()
+  match info.version {
+    Some(v) => println("qdrant version: " + v)
+    None => println("qdrant version: unknown")
+  }
+
   println("demo finished")
 }
