@@ -850,7 +850,7 @@ pub async fn QdrantClient::update_collection(
 
 ///|
 /// Create a payload index on a field via
-/// `PUT /collections/{name}/indexes/{field}`.
+/// `PUT /collections/{name}/index?wait={wait}`.
 ///
 /// `schema` is the field schema, for example `"keyword"`, `"integer"`,
 /// `"float"`, `"geo"`, `"bool"`, `"text"` or `"uuid"`. Creating an index
@@ -862,19 +862,17 @@ pub async fn QdrantClient::create_payload_index(
   schema : String,
   wait? : Bool = true,
 ) -> Unit {
-  let path = "/collections/" +
-    name +
-    "/indexes/" +
-    field +
-    "?wait=" +
-    wait.to_string()
-  let body : Json = { "field_schema": Json::string(schema) }
+  let path = "/collections/" + name + "/index?wait=" + wait.to_string()
+  let body : Json = {
+    "field_name": Json::string(field),
+    "field_schema": Json::string(schema),
+  }
   let json = self.request_json(Put, path, Some(body))
   ignore(json)
 }
 
 ///|
-/// Delete a payload index via `DELETE /collections/{name}/indexes/{field}`.
+/// Delete a payload index via `DELETE /collections/{name}/index/{field}`.
 pub async fn QdrantClient::delete_payload_index(
   self : QdrantClient,
   name : String,
@@ -883,7 +881,7 @@ pub async fn QdrantClient::delete_payload_index(
 ) -> Unit {
   let path = "/collections/" +
     name +
-    "/indexes/" +
+    "/index/" +
     field +
     "?wait=" +
     wait.to_string()
@@ -893,12 +891,12 @@ pub async fn QdrantClient::delete_payload_index(
 
 ///|
 /// List the payload indexes of a collection via
-/// `GET /collections/{name}/indexes`.
+/// `GET /collections/{name}/index`.
 pub async fn QdrantClient::list_payload_indexes(
   self : QdrantClient,
   name : String,
 ) -> Array[PayloadIndexInfo] {
-  let path = "/collections/" + name + "/indexes"
+  let path = "/collections/" + name + "/index"
   let json = self.request_json(Get, path, None)
   match parse_payload_indexes(json) {
     Some(indexes) => indexes

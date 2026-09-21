@@ -299,7 +299,7 @@ Implemented:
 - [x] `PUT|POST /collections/{name}/points/payload` set / overwrite payload
 - [x] `POST /collections/{name}/points/payload/delete` delete payload
   (whole payload or selected keys)
-- [x] `PUT|GET|DELETE /collections/{name}/indexes/{field}` payload indexes
+- [x] `PUT|GET /collections/{name}/index` / `DELETE /collections/{name}/index/{field}` payload indexes
 - [x] `POST /collections/{name}/points/query` query API
   (`query_nearest` / `query_recommend` / raw `query_points`)
 - [x] `POST /collections/{name}/facet` facet counts
