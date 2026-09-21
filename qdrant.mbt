@@ -1076,7 +1076,7 @@ pub async fn QdrantClient::query_recommend(
 
 ///|
 /// Count the distinct values of a payload field via
-/// `POST /collections/{name}/points/facet`.
+/// `POST /collections/{name}/facet`.
 ///
 /// `key` is the payload field to facet on; `limit` bounds how many distinct
 /// values are returned (by descending count). Pass `exact=true` for exact
@@ -1089,7 +1089,7 @@ pub async fn QdrantClient::facet_points(
   filter? : Filter? = None,
   exact? : Bool = false,
 ) -> FacetResult {
-  let path = "/collections/" + name + "/points/facet"
+  let path = "/collections/" + name + "/facet"
   let members : Map[String, Json] = Map([])
   members["key"] = Json::string(key)
   members["limit"] = Json::number(limit.to_double())

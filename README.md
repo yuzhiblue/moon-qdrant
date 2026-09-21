@@ -302,7 +302,7 @@ Implemented:
 - [x] `PUT|GET|DELETE /collections/{name}/indexes/{field}` payload indexes
 - [x] `POST /collections/{name}/points/query` query API
   (`query_nearest` / `query_recommend` / raw `query_points`)
-- [x] `POST /collections/{name}/points/facet` facet counts
+- [x] `POST /collections/{name}/facet` facet counts
 - [x] `POST /collections/aliases` / `GET /collections/aliases` collection aliases
 - [x] `GET|POST|DELETE /collections/{name}/snapshots` snapshot management
 - [x] `GET|POST /collections/{name}/lock` collection write lock
