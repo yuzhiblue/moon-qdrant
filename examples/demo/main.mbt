@@ -219,7 +219,7 @@ async fn main {
     " peers=" +
     cluster.peers.length().to_string(),
   )
-  let lock = client.collection_lock(collection)
+  let lock = client.get_locks()
   println("collection lock write=" + lock.write.to_string())
   let info = client.service_info()
   match info.version {

@@ -227,8 +227,8 @@ client.create_shard_replica("demo", 0L, 2L)
 client.delete_shard_replica("demo", 0L, 2L)
 
 // write lock + server version
-client.set_collection_lock("demo", true, error_message=Some("maintenance"))
-let lock = client.collection_lock("demo")
+client.set_locks(true, error_message=Some("maintenance"))
+let lock = client.get_locks()
 println("writes locked: " + lock.write.to_string())
 let info = client.service_info()
 match info.version {
@@ -305,7 +305,7 @@ Implemented:
 - [x] `POST /collections/{name}/facet` facet counts
 - [x] `POST /collections/aliases` / `GET /aliases` collection aliases
 - [x] `GET|POST|DELETE /collections/{name}/snapshots` snapshot management
-- [x] `GET|POST /collections/{name}/lock` collection write lock
+- [x] `GET|POST /locks` service write lock
 - [x] `GET /service` server info (version / commit)
 - [x] `GET /cluster` cluster state (status, peers, raft info)
 - [x] `GET /collections/{name}/cluster` per-collection shard / replica layout

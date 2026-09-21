@@ -198,16 +198,12 @@ async fn main {
   check("alias listed", aliases.length() >= 1)
   client.delete_alias("integration-alias")
 
-  // collection lock
-  client.set_collection_lock(
-    collection,
-    true,
-    error_message=Some("maintenance"),
-  )
-  let lock = client.collection_lock(collection)
+  // service write lock (Qdrant locks are service-wide)
+  client.set_locks(true, error_message=Some("maintenance"))
+  let lock = client.get_locks()
   check("collection locked", lock.write)
-  client.set_collection_lock(collection, false)
-  let unlocked = client.collection_lock(collection)
+  client.set_locks(false)
+  let unlocked = client.get_locks()
   check("collection unlocked", !unlocked.write)
 
   // service + cluster (single node answers these too)

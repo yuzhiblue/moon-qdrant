@@ -1168,14 +1168,11 @@ pub async fn QdrantClient::search_points_groups(
 }
 
 ///|
-/// Read the write lock state of a collection via
-/// `GET /collections/{name}/lock`.
-pub async fn QdrantClient::collection_lock(
-  self : QdrantClient,
-  name : String,
-) -> CollectionLock {
-  let path = "/collections/" + name + "/lock"
-  let json = self.request_json(Get, path, None)
+/// Read the global write lock state via `GET /locks`. Qdrant locks are
+/// service-wide (not per-collection); when `write` is true the service
+/// rejects write operations.
+pub async fn QdrantClient::get_locks(self : QdrantClient) -> CollectionLock {
+  let json = self.request_json(Get, "/locks", None)
   match json {
     Object(members) =>
       match members.get("result") {
@@ -1192,18 +1189,15 @@ pub async fn QdrantClient::collection_lock(
 }
 
 ///|
-/// Set the write lock state of a collection via
-/// `POST /collections/{name}/lock`.
+/// Set the global write lock state via `POST /locks`.
 ///
-/// When `write` is true the collection rejects write operations; provide an
+/// When `write` is true the service rejects write operations; provide an
 /// optional `error_message` returned to clients on rejected writes.
-pub async fn QdrantClient::set_collection_lock(
+pub async fn QdrantClient::set_locks(
   self : QdrantClient,
-  name : String,
   write : Bool,
   error_message? : String? = None,
 ) -> Unit {
-  let path = "/collections/" + name + "/lock"
   let members : Map[String, Json] = Map([])
   members["write"] = Json::boolean(write)
   match error_message {
@@ -1211,7 +1205,7 @@ pub async fn QdrantClient::set_collection_lock(
     None => ()
   }
   let body = Json::object(members)
-  let json = self.request_json(Post, path, Some(body))
+  let json = self.request_json(Post, "/locks", Some(body))
   ignore(json)
 }
 
