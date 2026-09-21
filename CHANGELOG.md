@@ -4,6 +4,54 @@ All notable changes to moon-qdrant are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.4.1] - 2026-09-21
+
+### Changed
+
+- The collection write lock was reworked to Qdrant's real service-wide API:
+  `collection_lock` / `set_collection_lock` are replaced by `get_locks` /
+  `set_locks` (`GET|POST /locks`). Qdrant locks are global, not
+  per-collection.
+- `service_info` now reads `GET /` (a bare object with `title` / `version` /
+  `commit`); the previous `GET /service` path does not exist.
+- `list_aliases` now calls `GET /aliases`; `GET /collections/aliases` is not
+  a listing endpoint.
+- `list_payload_indexes` reads the `payload_schema` of
+  `GET /collections/{name}`; Qdrant has no dedicated list-indexes endpoint.
+- `ClusterInfo` tolerates single-node responses
+  (`{"result":{"status":"disabled"}}`): `peer_id` defaults to `0` and
+  `peers` to an empty map when absent.
+- `search_points` with `using_vector` embeds the vector name in the vector
+  object (`{"name": ..., "vector": [...]}`); the search API has no
+  top-level `using` field.
+
+### Fixed
+
+All found by the integration workflow, which runs every client method
+against a real Qdrant 1.15.5 container on each push:
+
+- `health()` no longer JSON-parses the plain-text `/healthz` body.
+- Requests explicitly send `Accept-Encoding: identity`, avoiding a mio
+  deflate-decompression crash on compressed API responses.
+- `search_points` sends `limit` in the JSON body (it is not a query
+  parameter).
+- `MatchKeyword` serializes as `match.value`; Qdrant has no
+  `match.keyword`.
+- Query-API responses with the `result.points` object shape are accepted in
+  addition to plain arrays.
+- Facet counts use `POST /collections/{name}/facet` (not
+  `/points/facet`), and facet / grouped-search checks create the required
+  keyword payload index first.
+- Payload index endpoints are `PUT|GET /collections/{name}/index` and
+  `DELETE /collections/{name}/index/{field_name}` (not `/indexes`);
+  `create_payload_index` sends `field_name` / `field_schema`.
+- `delete_payload_by_keys` sends the `keys` array (not `payload`).
+- JSON parse errors include the HTTP status, path and a preview of the raw
+  response, so integration failures on a real server are diagnosable from
+  CI logs.
+- The demo runs end to end against a real server (facet index creation and
+  named-vector search fixed).
+
 ## [0.4.0] - 2026-09-21
 
 ### Added
