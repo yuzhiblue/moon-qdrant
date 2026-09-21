@@ -67,6 +67,11 @@ async fn QdrantClient::send_raw(
     Some(key) => builder.header("api-key", key)
     None => builder
   }
+  // Ask Qdrant for identity (uncompressed) responses. mio advertises
+  // `Accept-Encoding: gzip, deflate, br, zstd, identity` by default and
+  // auto-decompresses, but its deflate path fails on Qdrant's payloads
+  // (BadRequest). Opt out of compression entirely.
+  let builder = builder.header("Accept-Encoding", "identity")
   let builder = match body {
     Some(json) => builder.json(json)
     None => builder
