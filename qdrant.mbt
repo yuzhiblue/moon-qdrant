@@ -81,6 +81,16 @@ async fn QdrantClient::send_raw(
 }
 
 ///|
+/// Truncate a raw response body for inclusion in an error message.
+fn json_preview(text : String) -> String {
+  if text.length() > 200 {
+    text[:200].to_owned()
+  } else {
+    text
+  }
+}
+
+///|
 /// Send a request and return the HTTP status code together with the parsed
 /// JSON body.
 async fn QdrantClient::send(
@@ -91,7 +101,14 @@ async fn QdrantClient::send(
 ) -> (Int, Json) {
   let (code, text) = self.send_raw(verb, path, body)
   let json = @json.parse(text) catch {
-    err => raise Failure("invalid JSON in Qdrant response: " + err.to_string())
+    err =>
+      raise Failure(
+        "invalid JSON in Qdrant response: " +
+        err.to_string() +
+        " (raw: " +
+        json_preview(text) +
+        ")",
+      )
   }
   (code, json)
 }
