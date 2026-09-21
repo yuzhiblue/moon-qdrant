@@ -271,7 +271,7 @@ pub async fn QdrantClient::upsert_points_batch(
   let payloads : Array[Json] = []
   for p in points {
     ids.push(Json::number(p.id.to_double()))
-    vectors.push(vector_to_json(p.vector))
+    vectors.push(p.vector_json())
     payloads.push(p.payload)
   }
   let body : Json = {
@@ -305,13 +305,9 @@ pub async fn QdrantClient::get_point(
     with_vector.to_string()
   let (code, json) = self.send(Get, path, None)
   if code >= 200 && code < 300 {
-    match json {
-      Object(members) =>
-        match members.get("result") {
-          Some(result) => PointStruct::from_json(result)
-          None => None
-        }
-      _ => None
+    match parse_result(json) {
+      Some(result) => PointStruct::from_json(result)
+      None => None
     }
   } else if code == 404 {
     None
@@ -516,18 +512,13 @@ pub async fn QdrantClient::scroll_points(
     limit, filter, offset, with_payload, with_vector,
   )
   let json = self.request_json(Post, path, Some(body))
-  match json {
-    Object(o) =>
-      match o.get("result") {
-        Some(result) =>
-          match ScrollResult::from_json(result) {
-            Some(page) => page
-            None =>
-              raise Failure("unexpected scroll response: " + json.stringify())
-          }
+  match parse_result(json) {
+    Some(result) =>
+      match ScrollResult::from_json(result) {
+        Some(page) => page
         None => raise Failure("unexpected scroll response: " + json.stringify())
       }
-    _ => raise Failure("unexpected scroll response: " + json.stringify())
+    None => raise Failure("unexpected scroll response: " + json.stringify())
   }
 }
 
@@ -547,18 +538,13 @@ pub async fn QdrantClient::count_points(
   let path = "/collections/" + name + "/points/count"
   let body = count_request_body(filter, exact)
   let json = self.request_json(Post, path, Some(body))
-  match json {
-    Object(o) =>
-      match o.get("result") {
-        Some(result) =>
-          match parse_count_result(result) {
-            Some(n) => n
-            None =>
-              raise Failure("unexpected count response: " + json.stringify())
-          }
+  match parse_result(json) {
+    Some(result) =>
+      match parse_count_result(result) {
+        Some(n) => n
         None => raise Failure("unexpected count response: " + json.stringify())
       }
-    _ => raise Failure("unexpected count response: " + json.stringify())
+    None => raise Failure("unexpected count response: " + json.stringify())
   }
 }
 
@@ -635,7 +621,7 @@ pub async fn QdrantClient::delete_alias(
 }
 
 ///|
-/// List all collection aliases via `GET /collections/aliases`.
+/// List all collection aliases via `GET /aliases`.
 pub async fn QdrantClient::list_aliases(
   self : QdrantClient,
 ) -> Array[AliasInfo] {
@@ -935,19 +921,14 @@ pub async fn QdrantClient::create_snapshot(
 ) -> SnapshotInfo {
   let path = "/collections/" + name + "/snapshots?wait=" + wait.to_string()
   let json = self.request_json(Post, path, None)
-  match json {
-    Object(members) =>
-      match members.get("result") {
-        Some(result) =>
-          match SnapshotInfo::from_json(result) {
-            Some(info) => info
-            None =>
-              raise Failure("unexpected snapshot response: " + json.stringify())
-          }
+  match parse_result(json) {
+    Some(result) =>
+      match SnapshotInfo::from_json(result) {
+        Some(info) => info
         None =>
           raise Failure("unexpected snapshot response: " + json.stringify())
       }
-    _ => raise Failure("unexpected snapshot response: " + json.stringify())
+    None => raise Failure("unexpected snapshot response: " + json.stringify())
   }
 }
 
@@ -1102,18 +1083,13 @@ pub async fn QdrantClient::facet_points(
   }
   let body = Json::object(members)
   let json = self.request_json(Post, path, Some(body))
-  match json {
-    Object(o) =>
-      match o.get("result") {
-        Some(result) =>
-          match FacetResult::from_json(result) {
-            Some(fr) => fr
-            None =>
-              raise Failure("unexpected facet response: " + json.stringify())
-          }
+  match parse_result(json) {
+    Some(result) =>
+      match FacetResult::from_json(result) {
+        Some(fr) => fr
         None => raise Failure("unexpected facet response: " + json.stringify())
       }
-    _ => raise Failure("unexpected facet response: " + json.stringify())
+    None => raise Failure("unexpected facet response: " + json.stringify())
   }
 }
 
@@ -1139,7 +1115,14 @@ pub async fn QdrantClient::search_points_groups(
 ) -> Array[ScoredPointGroup] {
   let path = "/collections/" + name + "/points/search/groups"
   let members : Map[String, Json] = Map([])
-  members["vector"] = vector_to_json(vector)
+  // Like the search API, the groups endpoint has no top-level "using"
+  // field; on a named-vector collection the name goes inside the vector
+  // object.
+  members["vector"] = match using_vector {
+    Some(u) =>
+      Json::object({ "name": Json::string(u), "vector": vector_to_json(vector) })
+    None => vector_to_json(vector)
+  }
   members["limit"] = Json::number(limit.to_double())
   members["group_by"] = Json::string(group_by)
   members["group_size"] = Json::number(group_size.to_double())
@@ -1151,10 +1134,6 @@ pub async fn QdrantClient::search_points_groups(
   }
   match score_threshold {
     Some(t) => members["score_threshold"] = Json::number(t)
-    None => ()
-  }
-  match using_vector {
-    Some(u) => members["using"] = Json::string(u)
     None => ()
   }
   match search_params {
@@ -1176,18 +1155,13 @@ pub async fn QdrantClient::search_points_groups(
 /// rejects write operations.
 pub async fn QdrantClient::get_locks(self : QdrantClient) -> CollectionLock {
   let json = self.request_json(Get, "/locks", None)
-  match json {
-    Object(members) =>
-      match members.get("result") {
-        Some(result) =>
-          match CollectionLock::from_json(result) {
-            Some(lock) => lock
-            None =>
-              raise Failure("unexpected lock response: " + json.stringify())
-          }
+  match parse_result(json) {
+    Some(result) =>
+      match CollectionLock::from_json(result) {
+        Some(lock) => lock
         None => raise Failure("unexpected lock response: " + json.stringify())
       }
-    _ => raise Failure("unexpected lock response: " + json.stringify())
+    None => raise Failure("unexpected lock response: " + json.stringify())
   }
 }
 
@@ -1213,7 +1187,7 @@ pub async fn QdrantClient::set_locks(
 }
 
 ///|
-/// Read server info via `GET /service`: the Qdrant version and commit hash.
+/// Read server info via `GET /`: the Qdrant version and commit hash.
 pub async fn QdrantClient::service_info(self : QdrantClient) -> ServiceInfo {
   let json = self.request_json(Get, "/", None)
   match ServiceInfo::from_json(json) {
@@ -1258,19 +1232,14 @@ pub fn collection_cluster_op_body(
 /// the peer map and raft consensus info.
 pub async fn QdrantClient::cluster_info(self : QdrantClient) -> ClusterInfo {
   let json = self.request_json(Get, "/cluster", None)
-  match json {
-    Object(members) =>
-      match members.get("result") {
-        Some(result) =>
-          match ClusterInfo::from_json(result) {
-            Some(info) => info
-            None =>
-              raise Failure("unexpected cluster response: " + json.stringify())
-          }
+  match parse_result(json) {
+    Some(result) =>
+      match ClusterInfo::from_json(result) {
+        Some(info) => info
         None =>
           raise Failure("unexpected cluster response: " + json.stringify())
       }
-    _ => raise Failure("unexpected cluster response: " + json.stringify())
+    None => raise Failure("unexpected cluster response: " + json.stringify())
   }
 }
 
@@ -1284,26 +1253,36 @@ pub async fn QdrantClient::collection_cluster_info(
 ) -> CollectionClusterInfo {
   let path = "/collections/" + name + "/cluster"
   let json = self.request_json(Get, path, None)
-  match json {
-    Object(members) =>
-      match members.get("result") {
-        Some(result) =>
-          match CollectionClusterInfo::from_json(result) {
-            Some(info) => info
-            None =>
-              raise Failure(
-                "unexpected collection cluster response: " + json.stringify(),
-              )
-          }
+  match parse_result(json) {
+    Some(result) =>
+      match CollectionClusterInfo::from_json(result) {
+        Some(info) => info
         None =>
           raise Failure(
             "unexpected collection cluster response: " + json.stringify(),
           )
       }
-    _ =>
+    None =>
       raise Failure(
         "unexpected collection cluster response: " + json.stringify(),
       )
+  }
+}
+
+///|
+/// Run a collection cluster operation via `POST /collections/{name}/cluster`
+/// and return whether Qdrant reported the operation as started.
+async fn QdrantClient::cluster_op(
+  self : QdrantClient,
+  name : String,
+  body : Json,
+) -> Bool {
+  let path = "/collections/" + name + "/cluster"
+  let json = self.request_json(Post, path, Some(body))
+  match parse_result(json) {
+    Some(True) => true
+    Some(False) => false
+    _ => raise Failure("unexpected cluster op response: " + json.stringify())
   }
 }
 
@@ -1317,24 +1296,15 @@ pub async fn QdrantClient::replicate_shard(
   from_peer_id : Int64,
   to_peer_id : Int64,
 ) -> Bool {
-  let path = "/collections/" + name + "/cluster"
-  let body = collection_cluster_op_body(
-    "replicate_shard",
-    shard_id,
-    from_peer_id=Some(from_peer_id),
-    to_peer_id=Some(to_peer_id),
+  self.cluster_op(
+    name,
+    collection_cluster_op_body(
+      "replicate_shard",
+      shard_id,
+      from_peer_id=Some(from_peer_id),
+      to_peer_id=Some(to_peer_id),
+    ),
   )
-  let json = self.request_json(Post, path, Some(body))
-  match json {
-    Object(members) =>
-      match members.get("result") {
-        Some(True) => true
-        Some(False) => false
-        _ =>
-          raise Failure("unexpected cluster op response: " + json.stringify())
-      }
-    _ => raise Failure("unexpected cluster op response: " + json.stringify())
-  }
 }
 
 ///|
@@ -1346,23 +1316,14 @@ pub async fn QdrantClient::create_shard_replica(
   shard_id : Int64,
   peer_id : Int64,
 ) -> Bool {
-  let path = "/collections/" + name + "/cluster"
-  let body = collection_cluster_op_body(
-    "create_shard_replica",
-    shard_id,
-    peer_id=Some(peer_id),
+  self.cluster_op(
+    name,
+    collection_cluster_op_body(
+      "create_shard_replica",
+      shard_id,
+      peer_id=Some(peer_id),
+    ),
   )
-  let json = self.request_json(Post, path, Some(body))
-  match json {
-    Object(members) =>
-      match members.get("result") {
-        Some(True) => true
-        Some(False) => false
-        _ =>
-          raise Failure("unexpected cluster op response: " + json.stringify())
-      }
-    _ => raise Failure("unexpected cluster op response: " + json.stringify())
-  }
 }
 
 ///|
@@ -1374,21 +1335,12 @@ pub async fn QdrantClient::delete_shard_replica(
   shard_id : Int64,
   peer_id : Int64,
 ) -> Bool {
-  let path = "/collections/" + name + "/cluster"
-  let body = collection_cluster_op_body(
-    "delete_shard_replica",
-    shard_id,
-    peer_id=Some(peer_id),
+  self.cluster_op(
+    name,
+    collection_cluster_op_body(
+      "delete_shard_replica",
+      shard_id,
+      peer_id=Some(peer_id),
+    ),
   )
-  let json = self.request_json(Post, path, Some(body))
-  match json {
-    Object(members) =>
-      match members.get("result") {
-        Some(True) => true
-        Some(False) => false
-        _ =>
-          raise Failure("unexpected cluster op response: " + json.stringify())
-      }
-    _ => raise Failure("unexpected cluster op response: " + json.stringify())
-  }
 }

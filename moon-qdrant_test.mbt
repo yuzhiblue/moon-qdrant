@@ -93,6 +93,33 @@ test "point struct serializes id, vector and payload" {
 }
 
 ///|
+test "vector_json keeps named vectors intact" {
+  let named : Map[String, Array[Double]] = Map([])
+  named["text"] = [0.1, 0.2, 0.3, 0.4]
+  named["image"] = [1.0, 2.0, 3.0]
+  let p = @moon-qdrant.PointStruct::new_named(7, named, { "tag": "x" })
+  match p.vector_json() {
+    Object(members) => {
+      assert_true(members.length() == 2)
+      match members.get("text") {
+        Some(Array(arr)) => assert_true(arr.length() == 4)
+        _ => fail("expected text vector array")
+      }
+      match members.get("image") {
+        Some(Array(arr)) => assert_true(arr.length() == 3)
+        _ => fail("expected image vector array")
+      }
+    }
+    _ => fail("expected named vector object")
+  }
+  let dense = @moon-qdrant.PointStruct::new(7, [1.0, 2.0], {})
+  match dense.vector_json() {
+    Array(arr) => assert_true(arr.length() == 2)
+    _ => fail("expected dense vector array")
+  }
+}
+
+///|
 test "collection list parses the standard qdrant response" {
   let json : Json = {
     "result": { "collections": [{ "name": "alice" }, { "name": "bob" }] },

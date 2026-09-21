@@ -148,6 +148,44 @@ async fn main {
   )
   check("grouped search returns 2 groups", groups.length() == 2)
 
+  // grouped search on a named-vector collection: the vector name must be
+  // embedded in the vector object (no top-level "using" in search APIs)
+  let named_collection = "moon-qdrant-integration-check-named"
+  let named_vecs : Map[String, @moon_qdrant.VectorParams] = Map([])
+  named_vecs["text"] = @moon_qdrant.VectorParams::new(
+    4,
+    @moon_qdrant.Distance::Cosine,
+  )
+  named_vecs["image"] = @moon_qdrant.VectorParams::new(
+    8,
+    @moon_qdrant.Distance::Dot,
+  )
+  client.create_collection(
+    named_collection,
+    @moon_qdrant.CollectionConfig::new_named(named_vecs),
+  )
+  let nv_points : Map[String, Array[Double]] = Map([])
+  nv_points["text"] = [0.1, 0.2, 0.3, 0.4]
+  nv_points["image"] = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0]
+  client.upsert_points(named_collection, [
+    @moon_qdrant.PointStruct::new_named(1, nv_points, { "tag": "alpha" }),
+  ])
+  client.create_payload_index(named_collection, "tag", "keyword")
+  let nv_groups = client.search_points_groups(
+    named_collection,
+    [0.1, 0.2, 0.3, 0.4],
+    1,
+    "tag",
+    5,
+    using_vector=Some("text"),
+  )
+  check(
+    "grouped search with named vector returns groups",
+    nv_groups.length() >= 1,
+  )
+  client.delete_collection(named_collection)
+  check("named collection deleted", !client.collection_exists(named_collection))
+
   // payload operations
   client.set_payload(
     collection,

@@ -168,27 +168,30 @@ pub fn PointStruct::new_named(
 }
 
 ///|
-/// Convert to the point object used by PUT /collections/{name}/points:
-/// `{ "id": 1, "vector": [...] | {"name": [...]}, "payload": {...} }`.
-pub fn PointStruct::to_json(self : PointStruct) -> Json {
+/// The `vector` field of this point: a JSON array for dense vectors, a
+/// `{ "name": [...] }` object for named vectors. Shared by the single-point
+/// and batch upsert serializers so both keep named vectors intact.
+pub fn PointStruct::vector_json(self : PointStruct) -> Json {
   match self.named_vectors {
     Some(named) => {
       let members : Map[String, Json] = Map([])
       for name in named.keys() {
         members[name] = vector_to_json(named[name])
       }
-      {
-        "id": Json::number(self.id.to_double()),
-        "vector": Json::object(members),
-        "payload": self.payload,
-      }
+      Json::object(members)
     }
-    None =>
-      {
-        "id": Json::number(self.id.to_double()),
-        "vector": vector_to_json(self.vector),
-        "payload": self.payload,
-      }
+    None => vector_to_json(self.vector)
+  }
+}
+
+///|
+/// Convert to the point object used by PUT /collections/{name}/points:
+/// `{ "id": 1, "vector": [...] | {"name": [...]}, "payload": {...} }`.
+pub fn PointStruct::to_json(self : PointStruct) -> Json {
+  {
+    "id": Json::number(self.id.to_double()),
+    "vector": self.vector_json(),
+    "payload": self.payload,
   }
 }
 
@@ -587,6 +590,17 @@ pub fn ScrollResult::from_json(json : Json) -> ScrollResult? {
     _ => None
   }
   Some({ points, next_page_offset, })
+}
+
+///|
+/// Extract the `result` field of a Qdrant API response
+/// (`{ "result": ..., "status": "ok", "time": ... }`).
+/// Returns None when the response is not an object or has no `result` key.
+pub fn parse_result(json : Json) -> Json? {
+  match json {
+    Object(members) => members.get("result")
+    _ => None
+  }
 }
 
 ///|
@@ -1079,7 +1093,7 @@ pub fn parse_search_groups(json : Json) -> Array[ScoredPointGroup]? {
 }
 
 ///|
-/// Collection lock state, from GET /collections/{name}/lock.
+/// Collection lock state, from GET /locks.
 /// When `write` is true, the collection rejects write operations; the
 /// optional `error_message` is returned to clients on rejected writes.
 pub struct CollectionLock {

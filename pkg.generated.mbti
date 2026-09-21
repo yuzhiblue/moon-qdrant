@@ -26,6 +26,8 @@ pub fn parse_payload_indexes(Json) -> Array[PayloadIndexInfo]?
 
 pub fn parse_query_result(Json) -> Array[ScoredPoint]?
 
+pub fn parse_result(Json) -> Json?
+
 pub fn parse_retrieve_result(Json) -> Array[PointStruct]?
 
 pub fn parse_scored_array(Array[Json]) -> Array[ScoredPoint]?
@@ -191,6 +193,7 @@ pub fn PointStruct::from_json(Json) -> Self?
 pub fn PointStruct::new(Int, Array[Double], Json) -> Self
 pub fn PointStruct::new_named(Int, Map[String, Array[Double]], Json) -> Self
 pub fn PointStruct::to_json(Self) -> Json
+pub fn PointStruct::vector_json(Self) -> Json
 
 pub struct QdrantClient {
   base_url : String
