@@ -4,7 +4,7 @@ All notable changes to moon-qdrant are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [0.4.0] - 2026-09-21
 
 ### Added
 
@@ -57,6 +57,9 @@ All notable changes to moon-qdrant are documented here. The format follows
   implementation is now free of deprecated implicit method promotion, and
   tests qualify package symbols with `@moon-qdrant.*`; `moon check --deny-warn`
   passes cleanly.
+- The README was renamed from `README.mbt.md` to `README.md` so GitHub
+  renders it on the repository homepage; `moon.mod` now points `readme` at
+  the new name.
 
 ## [0.3.0] - 2026-09-20
 
@@ -120,3 +123,4 @@ Initial release targeting the September MoonBit hackathon.
 [0.1.0]: https://github.com/yuzhiblue/moon-qdrant/releases/tag/v0.1.0
 [0.2.0]: https://github.com/yuzhiblue/moon-qdrant/releases/tag/v0.2.0
 [0.3.0]: https://github.com/yuzhiblue/moon-qdrant/releases/tag/v0.3.0
+[0.4.0]: https://github.com/yuzhiblue/moon-qdrant/releases/tag/v0.4.0
