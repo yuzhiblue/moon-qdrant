@@ -891,12 +891,13 @@ pub async fn QdrantClient::delete_payload_index(
 
 ///|
 /// List the payload indexes of a collection via
-/// `GET /collections/{name}/index`.
+/// `GET /collections/{name}` (the `payload_schema` field). Qdrant has no
+/// dedicated list-indexes endpoint.
 pub async fn QdrantClient::list_payload_indexes(
   self : QdrantClient,
   name : String,
 ) -> Array[PayloadIndexInfo] {
-  let path = "/collections/" + name + "/index"
+  let path = "/collections/" + name
   let json = self.request_json(Get, path, None)
   match parse_payload_indexes(json) {
     Some(indexes) => indexes

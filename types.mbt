@@ -813,7 +813,8 @@ pub fn parse_snapshots(json : Json) -> Array[SnapshotInfo]? {
 }
 
 ///|
-/// One payload index entry, from GET /collections/{name}/indexes.
+/// One payload index entry, from the `payload_schema` of a collection info
+/// response.
 pub struct PayloadIndexInfo {
   data_type : String
   field_schema : Json?
@@ -833,21 +834,38 @@ pub fn PayloadIndexInfo::from_json(json : Json) -> PayloadIndexInfo? {
 }
 
 ///|
-/// Parse the `result` array of a payload-indexes response.
+/// Parse the payload indexes of a collection. Qdrant has no dedicated
+/// "list indexes" endpoint; the schema is returned as `payload_schema`
+/// inside `GET /collections/{name}`. Each key is a field name and each
+/// value is an index descriptor like
+/// `{ "data_type": "keyword", "points": 3, ... }`.
 pub fn parse_payload_indexes(json : Json) -> Array[PayloadIndexInfo]? {
   match json {
     Object(members) =>
       match members.get("result") {
-        Some(Array(arr)) => {
-          let out : Array[PayloadIndexInfo] = []
-          for item in arr {
-            match PayloadIndexInfo::from_json(item) {
-              Some(i) => out.push(i)
-              None => return None
+        Some(Object(result)) =>
+          match result.get("payload_schema") {
+            Some(Object(schema)) => {
+              let out : Array[PayloadIndexInfo] = []
+              for field in schema.keys() {
+                match schema[field] {
+                  Object(im) => {
+                    let data_type = match im.get("data_type") {
+                      Some(String(s)) => s
+                      _ => "unknown"
+                    }
+                    out.push({
+                      data_type,
+                      field_schema: Some(Json::string(field)),
+                    })
+                  }
+                  _ => ()
+                }
+              }
+              Some(out)
             }
+            _ => None
           }
-          Some(out)
-        }
         _ => None
       }
     _ => None

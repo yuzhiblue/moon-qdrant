@@ -755,17 +755,20 @@ test "payload index info parses an index entry" {
 }
 
 ///|
-test "payload index list parses the standard response" {
+test "payload index list parses the collection-info response" {
   let json : Json = {
-    "result": [
-      { "data_type": "keyword", "field_schema": "keyword", "points": 3 },
-      { "data_type": "integer", "field_schema": "integer", "points": 3 },
-    ],
+    "result": {
+      "payload_schema": {
+        "tag": { "data_type": "keyword", "points": 3 },
+        "price": { "data_type": "integer", "points": 3 },
+      },
+    },
     "status": "ok",
   }
   match @moon-qdrant.parse_payload_indexes(json) {
     Some(indexes) => {
       assert_true(indexes.length() == 2)
+      assert_true(indexes[0].data_type == "keyword")
       assert_true(indexes[1].data_type == "integer")
     }
     None => fail("expected payload indexes")
@@ -1283,7 +1286,7 @@ test "model parsers reject malformed input instead of raising" {
     @moon-qdrant.parse_snapshots(Json::object({ "result": Json::object({}) }))
     is None,
   )
-  // payload indexes: result is not an array
+  // payload indexes: payload_schema missing
   assert_true(
     @moon-qdrant.parse_payload_indexes(
       Json::object({ "result": Json::object({}) }),
