@@ -30,14 +30,15 @@ jobs:
           moon update
       - name: wait for qdrant
         run: |
-          for i in $(seq 1 60); do
-            if curl -sf http://localhost:6333/healthz | grep -q '"status":"ok"'; then
-              echo "Qdrant is ready"
+          for i in $(seq 1 90); do
+            code=$(curl -s -o /tmp/hz -w "%{http_code}" http://localhost:6333/healthz || true)
+            if [ "$code" = "200" ]; then
+              echo "Qdrant is ready: $(cat /tmp/hz)"
               exit 0
             fi
             sleep 2
           done
-          echo "Qdrant did not become ready in time"
+          echo "Qdrant did not become ready in time; last response: $(cat /tmp/hz 2>/dev/null || echo none)"
           exit 1
       - name: integration check
         run: |
