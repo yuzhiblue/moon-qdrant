@@ -1,3 +1,4 @@
 import {
   "oboard/mio",
+  "moonbitlang/core/json",
 }

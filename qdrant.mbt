@@ -46,14 +46,14 @@ pub fn join_url(base : String, path : String) -> String {
 }
 
 ///|
-/// Send a request and return the HTTP status code together with the parsed
-/// JSON body.
-async fn QdrantClient::send(
+/// Send a request and return the HTTP status code together with the raw
+/// text body (before JSON parsing).
+async fn QdrantClient::send_raw(
   self : QdrantClient,
   verb : @mio.RequestMethod,
   path : String,
   body : Json?,
-) -> (Int, Json) {
+) -> (Int, String) {
   let url = join_url(self.base_url, path)
   let builder = match verb {
     Get => self.http.get(url)
@@ -72,7 +72,36 @@ async fn QdrantClient::send(
     None => builder
   }
   let res = builder.send()
-  (res.response.code, res.json())
+  (res.response.code, res.text())
+}
+
+///|
+/// Send a request and return the HTTP status code together with the parsed
+/// JSON body.
+async fn QdrantClient::send(
+  self : QdrantClient,
+  verb : @mio.RequestMethod,
+  path : String,
+  body : Json?,
+) -> (Int, Json) {
+  let (code, text) = self.send_raw(verb, path, body)
+  let json = @json.parse(text) catch {
+    err => raise Failure("invalid JSON in Qdrant response: " + err.to_string())
+  }
+  (code, json)
+}
+
+///|
+/// Send a request and return only the HTTP status code, without touching
+/// the body. Used by endpoints that answer with plain text (e.g. /healthz).
+async fn QdrantClient::send_status(
+  self : QdrantClient,
+  verb : @mio.RequestMethod,
+  path : String,
+  body : Json?,
+) -> Int {
+  let (code, _) = self.send_raw(verb, path, body)
+  code
 }
 
 ///|
@@ -100,17 +129,11 @@ async fn QdrantClient::request_json(
 
 ///|
 /// Check the server health via `GET /healthz`.
-/// Returns true when the server reports status "ok".
+/// Qdrant answers this endpoint with plain text ("healthz check passed"),
+/// so only the HTTP status code is inspected: 200 means healthy.
 pub async fn QdrantClient::health(self : QdrantClient) -> Bool {
-  let json = self.request_json(Get, "/healthz", None)
-  match json {
-    Object(members) =>
-      match members.get("status") {
-        Some(String(s)) => s == "ok"
-        _ => false
-      }
-    _ => false
-  }
+  let code = self.send_status(Get, "/healthz", None)
+  code == 200
 }
 
 ///|
