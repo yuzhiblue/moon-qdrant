@@ -1284,13 +1284,16 @@ pub fn ClusterInfo::from_json(json : Json) -> ClusterInfo? {
     Some(String(s)) => s
     _ => return None
   }
+  // Single-node Qdrant reports only {"status": "disabled"}; peer_id and
+  // peers are present in distributed mode only. Default them so both
+  // shapes parse.
   let peer_id = match members.get("peer_id") {
     Some(n) =>
       match int64_of_json(n) {
         Some(v) => v
         None => return None
       }
-    _ => return None
+    _ => 0L
   }
   let peers : Map[String, PeerInfo] = Map([])
   match members.get("peers") {
@@ -1301,7 +1304,7 @@ pub fn ClusterInfo::from_json(json : Json) -> ClusterInfo? {
           None => return None
         }
       }
-    _ => return None
+    _ => ()
   }
   let raft_info = match members.get("raft_info") {
     Some(raft) => RaftInfo::from_json(raft)

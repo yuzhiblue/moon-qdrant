@@ -210,7 +210,10 @@ async fn main {
   let service = client.service_info()
   check("service_info reports a version", service.version is Some(_))
   let cluster = client.cluster_info()
-  check("cluster_info reports peers", cluster.peers.length() >= 1)
+  check(
+    "cluster_info reports status",
+    cluster.status == "disabled" || cluster.peers.length() >= 1,
+  )
   let layout = client.collection_cluster_info(collection)
   check(
     "collection cluster has local shards",
