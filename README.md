@@ -306,7 +306,7 @@ Implemented:
 - [x] `POST /collections/aliases` / `GET /aliases` collection aliases
 - [x] `GET|POST|DELETE /collections/{name}/snapshots` snapshot management
 - [x] `GET|POST /locks` service write lock
-- [x] `GET /service` server info (version / commit)
+- [x] `GET /` server info (version / commit)
 - [x] `GET /cluster` cluster state (status, peers, raft info)
 - [x] `GET /collections/{name}/cluster` per-collection shard / replica layout
 - [x] `POST /collections/{name}/cluster` shard operations

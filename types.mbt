@@ -1115,16 +1115,13 @@ pub struct ServiceInfo {
 /// Parse the service info object.
 pub fn ServiceInfo::from_json(json : Json) -> ServiceInfo? {
   guard json is Object(members) else { return None }
-  // Qdrant wraps the payload under "result": {"version": ..., "commit": ...}.
-  let result = match members.get("result") {
-    Some(Object(r)) => r
-    _ => return None
-  }
-  let version = match result.get("version") {
+  // Qdrant serves instance details at GET / with version/commit at the
+  // top level (no "result" wrapper).
+  let version = match members.get("version") {
     Some(String(s)) => Some(s)
     _ => None
   }
-  let commit = match result.get("commit") {
+  let commit = match members.get("commit") {
     Some(String(s)) => Some(s)
     _ => None
   }

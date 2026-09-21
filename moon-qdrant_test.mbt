@@ -902,8 +902,12 @@ test "collection lock tolerates a missing error message" {
 
 ///|
 test "service info parses version and commit" {
-  // Qdrant wraps service info under "result" in the real response.
-  let json : Json = { "result": { "version": "1.14.0", "commit": "abc123" } }
+  // Qdrant serves instance details at GET / without a result wrapper.
+  let json : Json = {
+    "title": "qdrant",
+    "version": "1.14.0",
+    "commit": "abc123",
+  }
   match @moon-qdrant.ServiceInfo::from_json(json) {
     Some(info) => {
       match info.version {

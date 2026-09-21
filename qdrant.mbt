@@ -1212,7 +1212,7 @@ pub async fn QdrantClient::set_locks(
 ///|
 /// Read server info via `GET /service`: the Qdrant version and commit hash.
 pub async fn QdrantClient::service_info(self : QdrantClient) -> ServiceInfo {
-  let json = self.request_json(Get, "/service", None)
+  let json = self.request_json(Get, "/", None)
   match ServiceInfo::from_json(json) {
     Some(info) => info
     None =>
