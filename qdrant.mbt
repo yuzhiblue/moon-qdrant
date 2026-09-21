@@ -103,7 +103,11 @@ async fn QdrantClient::send(
   let json = @json.parse(text) catch {
     err =>
       raise Failure(
-        "invalid JSON in Qdrant response: " +
+        "invalid JSON in Qdrant response (HTTP " +
+        code.to_string() +
+        " on " +
+        path +
+        "): " +
         err.to_string() +
         " (raw: " +
         json_preview(text) +
