@@ -802,7 +802,7 @@ pub async fn QdrantClient::delete_payload_by_keys(
     Object(m) => m
     _ => Map([])
   }
-  members["payload"] = Json::array(key_json)
+  members["keys"] = Json::array(key_json)
   let json = self.request_json(Post, path, Some(Json::object(members)))
   ignore(json)
 }
