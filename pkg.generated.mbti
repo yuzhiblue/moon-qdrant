@@ -28,6 +28,8 @@ pub fn parse_query_result(Json) -> Array[ScoredPoint]?
 
 pub fn parse_retrieve_result(Json) -> Array[PointStruct]?
 
+pub fn parse_scored_array(Array[Json]) -> Array[ScoredPoint]?
+
 pub fn parse_search_groups(Json) -> Array[ScoredPointGroup]?
 
 pub fn parse_search_result(Json) -> Array[ScoredPoint]?
