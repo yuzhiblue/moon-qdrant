@@ -404,12 +404,12 @@ async fn QdrantClient::search_points_raw(
   using_vector : String?,
   search_params : SearchParams?,
 ) -> Array[ScoredPoint] {
-  let path = "/collections/" +
-    name +
-    "/points/search?limit=" +
-    limit.to_string()
+  let path = "/collections/" + name + "/points/search"
   let base : Map[String, Json] = Map([])
   base["vector"] = vector
+  // `limit` is a required JSON body field for the search API (it is not a
+  // query parameter).
+  base["limit"] = Json::number(limit.to_double())
   base["with_payload"] = Json::boolean(with_payload)
   base["with_vector"] = Json::boolean(with_vector)
   match filter {
