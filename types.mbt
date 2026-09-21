@@ -473,7 +473,7 @@ pub fn Condition::to_json(self : Condition) -> Json {
     MatchKeyword(field, keyword) =>
       {
         "key": Json::string(field),
-        "match": { "keyword": Json::string(keyword) },
+        "match": { "value": Json::string(keyword) },
       }
     MatchValues(field, values) =>
       { "key": Json::string(field), "match": { "any": Json::array(values) } }
