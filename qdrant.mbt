@@ -427,7 +427,14 @@ async fn QdrantClient::search_points_raw(
 ) -> Array[ScoredPoint] {
   let path = "/collections/" + name + "/points/search"
   let base : Map[String, Json] = Map([])
-  base["vector"] = vector
+  // On a collection with named vectors the search API requires the vector
+  // name inside the vector object ({"name": ..., "vector": [...]}); there is
+  // no top-level "using" field in the search request (that is a query-API
+  // field).
+  base["vector"] = match using_vector {
+    Some(u) => Json::object({ "name": Json::string(u), "vector": vector })
+    None => vector
+  }
   // `limit` is a required JSON body field for the search API (it is not a
   // query parameter).
   base["limit"] = Json::number(limit.to_double())
@@ -443,10 +450,6 @@ async fn QdrantClient::search_points_raw(
   }
   match offset {
     Some(o) => base["offset"] = Json::number(o.to_double())
-    None => ()
-  }
-  match using_vector {
-    Some(u) => base["using"] = Json::string(u)
     None => ()
   }
   match search_params {
