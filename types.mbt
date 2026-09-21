@@ -969,26 +969,39 @@ pub fn FacetResult::from_json(json : Json) -> FacetResult? {
 }
 
 ///|
-/// Parse the `result` object of a query response (same shape as a search
-/// result array: `{ "id": ..., "score": ..., "payload": ... }`).
+/// Parse the `result` of a query response into scored points.
+///
+/// The query API returns `{ "result": { "points": [...], "next_page_offset": ... } }`
+/// (an object), unlike the search API which returns `{ "result": [...] }`.
+/// Both shapes are accepted here.
 pub fn parse_query_result(json : Json) -> Array[ScoredPoint]? {
   match json {
     Object(members) =>
       match members.get("result") {
-        Some(Array(arr)) => {
-          let out : Array[ScoredPoint] = []
-          for item in arr {
-            match ScoredPoint::from_json(item) {
-              Some(hit) => out.push(hit)
-              None => return None
-            }
+        Some(Array(arr)) => parse_scored_array(arr)
+        Some(Object(inner)) =>
+          match inner.get("points") {
+            Some(Array(arr)) => parse_scored_array(arr)
+            _ => None
           }
-          Some(out)
-        }
         _ => None
       }
     _ => None
   }
+}
+
+///|
+/// Parse an array of scored point objects into `ScoredPoint` values.
+/// Returns None when any element does not match the expected shape.
+pub fn parse_scored_array(arr : Array[Json]) -> Array[ScoredPoint]? {
+  let out : Array[ScoredPoint] = []
+  for item in arr {
+    match ScoredPoint::from_json(item) {
+      Some(hit) => out.push(hit)
+      None => return None
+    }
+  }
+  Some(out)
 }
 
 ///|
