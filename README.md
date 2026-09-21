@@ -341,6 +341,12 @@ moon run examples/integration_check -- http://localhost:6333
 moon run examples/demo -- http://localhost:6333
 ```
 
+## Reproducibility
+
+For reviewers: a short [reproducibility guide](REPRODUCIBILITY.md) covers
+environment setup, the end-to-end demo, re-running the integration check,
+expected outputs, and troubleshooting.
+
 ## License
 
 Apache-2.0
