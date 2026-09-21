@@ -113,6 +113,8 @@ async fn main {
   println("query recommend hits: " + recommended.length().to_string())
 
   // facet: distinct payload values with counts
+  // (a keyword payload index on the facet key is required first)
+  client.create_payload_index(collection, "tag", "keyword")
   let facet = client.facet_points(collection, "tag", 10)
   println("facet values: " + facet.hits.length().to_string())
   for hit in facet.hits {
@@ -138,7 +140,7 @@ async fn main {
   }
 
   // payload indexes speed up filtered access
-  client.create_payload_index(collection, "tag", "keyword")
+  // (the index was created earlier for facet/group checks)
   let indexes = client.list_payload_indexes(collection)
   println("payload indexes: " + indexes.length().to_string())
   client.delete_payload_index(collection, "tag")
