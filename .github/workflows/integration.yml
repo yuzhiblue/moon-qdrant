@@ -1,0 +1,47 @@
+name: Integration (real Qdrant)
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+jobs:
+  integration:
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    services:
+      qdrant:
+        image: qdrant/qdrant:v1.15.5
+        ports:
+          - 6333:6333
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: install
+        run: |
+          curl -fsSL https://cli.moonbitlang.com/install/unix.sh | bash
+          echo "$HOME/.moon/bin" >> $GITHUB_PATH
+      - name: post install
+        run: |
+          moon version --all
+          moon update
+      - name: wait for qdrant
+        run: |
+          for i in $(seq 1 60); do
+            if curl -sf http://localhost:6333/healthz | grep -q '"status":"ok"'; then
+              echo "Qdrant is ready"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "Qdrant did not become ready in time"
+          exit 1
+      - name: integration check
+        run: |
+          moon run examples/integration_check -- http://localhost:6333
+      - name: run demo
+        run: |
+          moon run examples/demo -- http://localhost:6333

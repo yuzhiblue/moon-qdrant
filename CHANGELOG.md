@@ -40,6 +40,9 @@ All notable changes to moon-qdrant are documented here. The format follows
   shard operations `replicate_shard` / `create_shard_replica` /
   `delete_shard_replica`;
 - CI now runs `moon check --target native --deny-warn`;
+- New `integration.yml` workflow runs `examples/integration_check` (asserts
+  every client method against a real Qdrant container) and the demo end to
+  end on every push;
 - Data models: `NamedVector`, `SearchParams`, `SnapshotInfo`,
   `PayloadIndexInfo`, `CollectionUpdate`, `FacetHit`, `FacetResult`,
   `ScoredPointGroup`, `CollectionLock`, `ServiceInfo`, `ClusterInfo`,

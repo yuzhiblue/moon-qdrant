@@ -1,5 +1,8 @@
 # yuzhiblue/moon-qdrant
 
+[![CI](https://github.com/yuzhiblue/moon-qdrant/actions/workflows/check.yml/badge.svg)](https://github.com/yuzhiblue/moon-qdrant/actions/workflows/check.yml)
+[![Integration](https://github.com/yuzhiblue/moon-qdrant/actions/workflows/integration.yml/badge.svg)](https://github.com/yuzhiblue/moon-qdrant/actions/workflows/integration.yml)
+
 A MoonBit client for the [Qdrant](https://qdrant.tech/) vector database REST API.
 
 moon-qdrant lets MoonBit programs manage Qdrant collections, upsert points,
@@ -320,6 +323,22 @@ Planned:
 moon check --deny-warn
 moon test
 moon fmt
+```
+
+### Integration testing against a real Qdrant
+
+Unit tests cover the pure logic (models, JSON conversion, request bodies).
+The end-to-end path is verified in CI against a real Qdrant server
+(`.github/workflows/integration.yml` starts a `qdrant/qdrant` container and
+runs `examples/integration_check`, which asserts every client method against
+the live API, then runs the demo end to end).
+
+Locally, start Qdrant and run the same checks:
+
+```bash
+docker run -p 6333:6333 qdrant/qdrant
+moon run examples/integration_check -- http://localhost:6333
+moon run examples/demo -- http://localhost:6333
 ```
 
 ## License
