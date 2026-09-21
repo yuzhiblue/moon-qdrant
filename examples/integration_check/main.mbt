@@ -133,11 +133,12 @@ async fn main {
   )
   check("query_recommend returns hits", recs.length() > 0)
 
-  // facet
+  // facet (requires a keyword payload index on the facet key)
+  client.create_payload_index(collection, "tag", "keyword")
   let facet = client.facet_points(collection, "tag", 10)
   check("facet returns 2 distinct tags", facet.hits.length() == 2)
 
-  // grouped search
+  // grouped search (group_by also needs a keyword index on the key)
   let groups = client.search_points_groups(
     collection,
     [0.1, 0.2, 0.3, 0.4],
@@ -179,8 +180,7 @@ async fn main {
     None => raise Failure("point 1 missing")
   }
 
-  // payload index
-  client.create_payload_index(collection, "tag", "keyword")
+  // payload index (created earlier for facet/group; verify and clean up)
   let indexes = client.list_payload_indexes(collection)
   check("payload index listed", indexes.length() >= 1)
   client.delete_payload_index(collection, "tag")
