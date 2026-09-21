@@ -636,7 +636,7 @@ pub async fn QdrantClient::delete_alias(
 pub async fn QdrantClient::list_aliases(
   self : QdrantClient,
 ) -> Array[AliasInfo] {
-  let json = self.request_json(Get, "/collections/aliases", None)
+  let json = self.request_json(Get, "/aliases", None)
   match parse_aliases(json) {
     Some(aliases) => aliases
     None => raise Failure("unexpected aliases response: " + json.stringify())
