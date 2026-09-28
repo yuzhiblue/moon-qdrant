@@ -30,6 +30,9 @@ jobs:
         run: |
           moon version --all
           moon update
+      - name: moon build
+        run: |
+          moon build --target native
       - name: moon check
         run: |
           moon check --target native --deny-warn
