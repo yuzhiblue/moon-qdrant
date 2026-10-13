@@ -4,7 +4,18 @@ All notable changes to moon-qdrant are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
-## [0.4.3] - 2026-10-13
+## [0.4.4] - 2026-10-13
+
+### Fixed
+
+- **Batch upsert now targets `PUT /collections/{name}/points`** with the
+  column-oriented `{"batch": {ids, vectors, payloads}}` body (the classic
+  batch loading endpoint). The previous `POST /points/batch` attempt hit the
+  newer multi-operation endpoint, which expects `{"operations": [...]}` and
+  rejected the batch body with `400 missing field operations`. This was
+  caught by the real-Qdrant integration test.
+
+
 
 ### Changed
 
