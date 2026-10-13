@@ -268,18 +268,54 @@ pub async fn QdrantClient::upsert_points_batch(
   wait~ : Bool = true,
 ) -> Unit {
   let path = "/collections/" + name + "/points?wait=" + wait.to_string()
+  if points.is_empty() {
+    return
+  }
   let ids : Array[Json] = []
-  let vectors : Array[Json] = []
   let payloads : Array[Json] = []
   for p in points {
     ids.push(Json::number(p.id.to_double()))
-    vectors.push(p.vector_json())
     payloads.push(p.payload)
+  }
+  // The batch endpoint accepts a transposed vector layout: for dense points
+  // `vectors` is an array of per-point vectors; for named points it is an
+  // object mapping each vector name to the array of per-point vectors.
+  let vectors = match points[0].named_vectors {
+    Some(first_named) => {
+      let by_name : Map[String, Json] = Map([])
+      for name in first_named.keys() {
+        let rows : Array[Json] = []
+        for p in points {
+          match p.named_vectors {
+            Some(named) =>
+              match named.get(name) {
+                Some(vec) => rows.push(vector_to_json(vec))
+                None =>
+                  raise Failure(
+                    "inconsistent named vectors in batch: missing \"" +
+                    name +
+                    "\"",
+                  )
+              }
+            None => raise Failure("mixed dense/named points in batch upsert")
+          }
+        }
+        by_name[name] = Json::array(rows)
+      }
+      Json::object(by_name)
+    }
+    None => {
+      let rows : Array[Json] = []
+      for p in points {
+        rows.push(vector_to_json(p.vector))
+      }
+      Json::array(rows)
+    }
   }
   let body : Json = {
     "batch": {
       "ids": Json::array(ids),
-      "vectors": Json::array(vectors),
+      "vectors": vectors,
       "payloads": Json::array(payloads),
     },
   }
