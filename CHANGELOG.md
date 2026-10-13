@@ -4,6 +4,27 @@ All notable changes to moon-qdrant are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.4.6] - 2026-10-13
+
+### Fixed
+
+- **health() no longer raises on transport failures**: a server that is down
+  or unreachable now reports `false` (unhealthy) instead of propagating a
+  network error, so readiness probes can safely rely on the Bool return.
+- **Dense vector updates serialized for current Qdrant**: PATCH
+  `/collections/{name}` now sends `{"vectors": {"": {size, distance}}}` as
+  required by Qdrant >= 1.13 (a vector name is mandatory in updates); the
+  previous bare params object was rejected.
+- **URL encoding for path segments**: collection, field and snapshot names
+  are now percent-encoded, so names containing spaces or reserved
+  characters no longer corrupt the request URL.
+
+### Added
+
+- `url_encode/1` public helper; new unit tests for the dense update wire
+  shape and URL encoding; the integration check now exercises
+  `update_collection` against a real server.
+
 ## [0.4.5] - 2026-10-13
 
 ### Fixed
