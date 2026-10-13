@@ -4,7 +4,20 @@ All notable changes to moon-qdrant are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
-## [0.4.4] - 2026-10-13
+## [0.4.5] - 2026-10-13
+
+### Fixed
+
+- **Batch vector layout for named-vector points**: the column-oriented batch
+  body now transposes named vectors into an object mapping each vector name
+  to the array of per-point vectors (e.g. `{"text": [[...], [...]]}`).
+  Previously each named point's `{name: [...]}` vector object was emitted
+  inside the array, which Qdrant rejected with
+  `400: data did not match any variant of untagged enum BatchVectorStruct`.
+- **Dense batch test assertions corrected** (verified against a real Qdrant
+  instance in CI: 3 base points + 2 batch points = 5, 3 after cleanup).
+
+
 
 ### Fixed
 

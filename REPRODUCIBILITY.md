@@ -136,7 +136,7 @@ verified against a live server, not just mocked.
 
 ## Package
 
-`yuzhiblue/moon-qdrant` is published on mooncakes.io (latest: `0.4.4`):
+`yuzhiblue/moon-qdrant` is published on mooncakes.io (latest: `0.4.5`):
 
 ```bash
 moon add yuzhiblue/moon-qdrant
