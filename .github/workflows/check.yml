@@ -18,17 +18,11 @@ jobs:
           persist-credentials: false
       - name: install-ubuntu
         if: ${{ matrix.os != 'windows-latest' }}
-        env:
-          # Pin the toolchain: newer moon releases started rejecting the
-          # legacy moon.mod.json format still shipped by bikallem/blit.
-          MOONBIT_INSTALL_VERSION: 0.1.20260920
         run: |
           curl -fsSL https://cli.moonbitlang.com/install/unix.sh | bash
           echo "$HOME/.moon/bin" >> $GITHUB_PATH
       - name: install-windows
         if: ${{ matrix.os == 'windows-latest' }}
-        env:
-          MOONBIT_INSTALL_VERSION: 0.1.20260920
         run: |
           Set-ExecutionPolicy RemoteSigned -Scope CurrentUser; irm https://cli.moonbitlang.com/install/powershell.ps1 | iex
           "C:\Users\runneradmin\.moon\bin" | Out-File -FilePath $env:GITHUB_PATH -Append
@@ -36,6 +30,19 @@ jobs:
         run: |
           moon version --all
           moon update
+      - name: migrate legacy dependency manifests
+        shell: bash
+        run: |
+          # Latest moon toolchains reject the legacy moon.mod.json manifest
+          # still shipped by bikallem/blit and bikallem/compress. Download
+          # the dependencies first, then migrate those manifests with
+          # `moon fmt` (the officially suggested migration path) before any
+          # build or check.
+          moon install
+          for d in $(find .mooncakes -name moon.mod.json | xargs -r dirname); do
+            echo "migrating $d"
+            (cd "$d" && moon fmt)
+          done
       - name: moon build
         run: |
           moon build --target native
