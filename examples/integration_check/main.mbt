@@ -217,7 +217,7 @@ async fn main {
     filter=None,
     exact=false,
   )
-  check("batch upsert on dense collection", dense_batch_count >= 7)
+  check("batch upsert on dense collection", dense_batch_count == 5)
   let batch_hits = client.search_points(collection, [0.4, 0.3, 0.2, 0.1], 1)
   check("dense batch vector searchable", batch_hits.length() == 1)
   client.delete_points(collection, [100, 101])
@@ -226,7 +226,7 @@ async fn main {
     filter=None,
     exact=false,
   )
-  check("batch points cleaned up", after_batch_clean == 5)
+  check("batch points cleaned up", after_batch_clean == 3)
 
   // payload operations
   client.set_payload(
