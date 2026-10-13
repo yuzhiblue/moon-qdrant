@@ -4,7 +4,20 @@ All notable changes to moon-qdrant are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
-## [0.4.2] - 2026-10-13
+## [0.4.3] - 2026-10-13
+
+### Changed
+
+- **Migrated to the new-style MoonBit syntax** required by toolchains
+  `>= 0.1.20261012` (moonc `v0.10.15`): optional named parameters now use
+  `~` (was `?`) and `Int` is now `Int32` throughout the public API. The
+  migration was applied with `moon fmt`; the API shape is unchanged.
+- **CI now migrates the legacy `moon.mod.json` manifests** of the transitive
+  dependencies `bikallem/blit` and `bikallem/compress` (no newer upstream
+  release exists) before building, so the project stays green on the latest
+  toolchain.
+
+
 
 ### Fixed
 
