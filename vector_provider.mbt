@@ -26,14 +26,14 @@ pub trait VectorProvider {
     self : Self,
     name : String,
     vector : Array[Double],
-    limit : Int,
+    limit : Int32,
     filter? : Json?,
   ) -> Array[ScoredPoint]
   async fn search_with_filter(
     self : Self,
     name : String,
     vector : Array[Double],
-    limit : Int,
+    limit : Int32,
     filter : Filter,
   ) -> Array[ScoredPoint]
 }
@@ -48,10 +48,10 @@ pub async fn QdrantClient::search_with_filter(
   self : QdrantClient,
   name : String,
   vector : Array[Double],
-  limit : Int,
+  limit : Int32,
   filter : Filter,
-  with_payload? : Bool = true,
-  with_vector? : Bool = false,
+  with_payload~ : Bool = true,
+  with_vector~ : Bool = false,
 ) -> Array[ScoredPoint] {
   self.search_points_with_filter(
     name,

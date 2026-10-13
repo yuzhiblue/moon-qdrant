@@ -39,12 +39,12 @@ pub fn Distance::from_wire(s : String) -> Distance? {
 /// Vector configuration for a collection, as accepted by
 /// PUT /collections/{name}.
 pub struct VectorParams {
-  size : Int
+  size : Int32
   distance : Distance
 }
 
 ///|
-pub fn VectorParams::new(size : Int, distance : Distance) -> VectorParams {
+pub fn VectorParams::new(size : Int32, distance : Distance) -> VectorParams {
   { size, distance, }
 }
 
@@ -140,7 +140,7 @@ pub fn vector_to_json(vector : Array[Double]) -> Json {
 /// A single point: an id, either a dense vector or a set of named vectors,
 /// and an optional JSON payload.
 pub struct PointStruct {
-  id : Int
+  id : Int32
   vector : Array[Double]
   named_vectors : Map[String, Array[Double]]?
   payload : Json
@@ -149,7 +149,7 @@ pub struct PointStruct {
 ///|
 /// Create a point with a single dense vector.
 pub fn PointStruct::new(
-  id : Int,
+  id : Int32,
   vector : Array[Double],
   payload : Json,
 ) -> PointStruct {
@@ -160,7 +160,7 @@ pub fn PointStruct::new(
 /// Create a point with named vectors, e.g.
 /// `{ "text": [0.1, 0.2], "image": [0.5, 0.6, 0.7] }`.
 pub fn PointStruct::new_named(
-  id : Int,
+  id : Int32,
   named_vectors : Map[String, Array[Double]],
   payload : Json,
 ) -> PointStruct {
@@ -292,7 +292,7 @@ pub fn CollectionList::from_json(json : Json) -> CollectionList? {
 /// Detailed information about a collection, from GET /collections/{name}.
 pub struct CollectionInfo {
   status : String
-  points_count : Int?
+  points_count : Int32?
   vectors : VectorParams?
 }
 
@@ -333,7 +333,7 @@ pub fn CollectionInfo::from_json(json : Json) -> CollectionInfo? {
 /// One hit returned by the search endpoint: a point id, its similarity score,
 /// and the payload attached to the point (when requested).
 pub struct ScoredPoint {
-  id : Int
+  id : Int32
   score : Double
   payload : Json?
 }
@@ -419,10 +419,10 @@ pub fn Condition::match_values(
 /// serialized filter.
 pub fn Condition::range(
   field : String,
-  gte? : Double? = None,
-  lte? : Double? = None,
-  gt? : Double? = None,
-  lt? : Double? = None,
+  gte~ : Double? = None,
+  lte~ : Double? = None,
+  gt~ : Double? = None,
+  lt~ : Double? = None,
 ) -> Condition {
   Range(field, gte, lte, gt, lt)
 }
@@ -566,7 +566,7 @@ pub fn Filter::to_json(self : Filter) -> Json {
 /// current page, and the next page offset when more pages remain.
 pub struct ScrollResult {
   points : Array[PointStruct]
-  next_page_offset : Int?
+  next_page_offset : Int32?
 }
 
 ///|
@@ -606,7 +606,7 @@ pub fn parse_result(json : Json) -> Json? {
 ///|
 /// Parse the `result` object of a count response: `{ "count": 42 }`.
 /// Returns None when the shape does not match.
-pub fn parse_count_result(json : Json) -> Int? {
+pub fn parse_count_result(json : Json) -> Int32? {
   match json {
     Object(members) =>
       match members.get("count") {
@@ -692,9 +692,9 @@ pub fn parse_aliases(json : Json) -> Array[AliasInfo]? {
 ///|
 /// Build the request body for POST /collections/{name}/points/scroll.
 pub fn scroll_request_body(
-  limit : Int,
+  limit : Int32,
   filter : Filter?,
-  offset : Int?,
+  offset : Int32?,
   with_payload : Bool,
   with_vector : Bool,
 ) -> Json {
@@ -749,14 +749,14 @@ pub fn NamedVector::to_json(self : NamedVector) -> Json {
 /// Search-time parameters passed in the `params` field of a search request.
 /// Both fields are optional; only the set ones are serialized.
 pub struct SearchParams {
-  hnsw_ef : Int?
+  hnsw_ef : Int32?
   exact : Bool?
 }
 
 ///|
 pub fn SearchParams::new(
-  hnsw_ef? : Int? = None,
-  exact? : Bool? = None,
+  hnsw_ef~ : Int32? = None,
+  exact~ : Bool? = None,
 ) -> SearchParams {
   { hnsw_ef, exact, }
 }
@@ -782,7 +782,7 @@ pub fn SearchParams::to_json(self : SearchParams) -> Json {
 pub struct SnapshotInfo {
   name : String
   creation_time : String?
-  size : Int?
+  size : Int32?
 }
 
 ///|
@@ -897,16 +897,16 @@ pub fn parse_payload_indexes(json : Json) -> Array[PayloadIndexInfo]? {
 pub struct CollectionUpdate {
   vectors : VectorParams?
   named_vectors : Map[String, VectorParams]?
-  replication_factor : Int?
-  write_consistency_factor : Int?
+  replication_factor : Int32?
+  write_consistency_factor : Int32?
 }
 
 ///|
 pub fn CollectionUpdate::new(
-  vectors? : VectorParams? = None,
-  named_vectors? : Map[String, VectorParams]? = None,
-  replication_factor? : Int? = None,
-  write_consistency_factor? : Int? = None,
+  vectors~ : VectorParams? = None,
+  named_vectors~ : Map[String, VectorParams]? = None,
+  replication_factor~ : Int32? = None,
+  write_consistency_factor~ : Int32? = None,
 ) -> CollectionUpdate {
   { vectors, named_vectors, replication_factor, write_consistency_factor, }
 }
@@ -950,7 +950,7 @@ pub fn CollectionUpdate::to_json(self : CollectionUpdate) -> Json {
 /// payload value together with the number of points carrying it.
 pub struct FacetHit {
   value : Json
-  count : Int
+  count : Int32
 }
 
 ///|

@@ -28,7 +28,7 @@ Both commands should finish in seconds against a freshly started Qdrant.
 
 | Requirement | Version / note |
 |---|---|
-| MoonBit toolchain | `0.1.20260920` or newer (`curl -fsSL https://cli.moonbitlang.com/install/unix.sh \| bash`) |
+| MoonBit toolchain | `0.1.20261012` or newer (new-style syntax: `~` named params, `Int32`) (`curl -fsSL https://cli.moonbitlang.com/install/unix.sh \| bash`) |
 | Docker | any recent version (or run Qdrant directly, see below) |
 | Qdrant image | `qdrant/qdrant:v1.15.5` (pinned in CI) |
 
@@ -136,7 +136,7 @@ verified against a live server, not just mocked.
 
 ## Package
 
-`yuzhiblue/moon-qdrant` is published on mooncakes.io (latest: `0.4.1`):
+`yuzhiblue/moon-qdrant` is published on mooncakes.io (latest: `0.4.3`):
 
 ```bash
 moon add yuzhiblue/moon-qdrant
