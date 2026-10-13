@@ -1193,12 +1193,14 @@ pub fn parse_int64(s : String) -> Int64? {
 ///|
 /// Read an integer from a JSON number, using the original textual
 /// representation when available so u64 values survive without loss.
+/// Numbers within the exact double range (2^53) convert directly; the
+/// MoonBit JSON lexer only keeps the `repr` text for out-of-range values.
 pub fn int64_of_json(json : Json) -> Int64? {
   match json {
     Number(n, repr~) =>
       match repr {
         Some(s) => parse_int64(s)
-        None => Some(Int64::from_int(n.to_int()))
+        None => Some(n.to_int64())
       }
     _ => None
   }

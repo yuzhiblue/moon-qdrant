@@ -1086,6 +1086,18 @@ test "int64_of_json falls back to the double for repr-less numbers" {
 }
 
 ///|
+test "int64_of_json converts repr-less large doubles exactly" {
+  // The MoonBit JSON lexer keeps repr=None for integers inside 2^53, so a
+  // server response like {"id": 3000000000} arrives as a bare double and
+  // must convert to Int64 without saturating at Int32.
+  let json = Json::number(3000000000.0)
+  match @moon-qdrant.int64_of_json(json) {
+    Some(v) => assert_true(v == 3000000000L)
+    None => fail("expected 3000000000")
+  }
+}
+
+///|
 test "int64_to_json keeps the exact decimal text for u64 peer ids" {
   // A u64 peer id beyond 2^53 must not be rounded by the double fallback.
   let json = @moon-qdrant.int64_to_json(4992814939605239477L)
