@@ -40,6 +40,8 @@ pub fn parse_snapshots(Json) -> Array[SnapshotInfo]?
 
 pub fn scroll_request_body(Int, Filter?, Int?, Bool, Bool) -> Json
 
+pub fn url_encode(String) -> String
+
 pub fn vector_to_json(Array[Double]) -> Json
 
 // Errors
