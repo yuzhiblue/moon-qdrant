@@ -281,7 +281,7 @@ pub async fn QdrantClient::upsert_points_batch(
       "payloads": Json::array(payloads),
     },
   }
-  let json = self.request_json(Put, path, Some(body))
+  let json = self.request_json(Post, path, Some(body))
   ignore(json)
 }
 
@@ -706,30 +706,12 @@ pub async fn QdrantClient::search_points_batch(
 
 ///|
 /// Set (merge) a payload on the given points via
-/// `PUT /collections/{name}/points/payload`.
-///
-/// Pass either `ids` or `filter` to select the target points. The payload
-/// fields are merged into each point's existing payload.
-pub async fn QdrantClient::set_payload(
-  self : QdrantClient,
-  name : String,
-  payload : Json,
-  ids? : Array[Int]? = None,
-  filter? : Filter? = None,
-  wait? : Bool = true,
-) -> Unit {
-  let path = "/collections/" + name + "/points/payload?wait=" + wait.to_string()
-  let body = payload_operation_body(payload, ids, filter)
-  let json = self.request_json(Put, path, Some(body))
-  ignore(json)
-}
-
-///|
-/// Overwrite the payload of the given points via
 /// `POST /collections/{name}/points/payload`.
 ///
-/// Unlike `set_payload`, the whole payload is replaced by the given object.
-pub async fn QdrantClient::overwrite_payload(
+/// Pass either `ids` or `filter` to select the target points. The payload
+/// fields are merged into each point's existing payload; fields not in the
+/// given object are kept.
+pub async fn QdrantClient::set_payload(
   self : QdrantClient,
   name : String,
   payload : Json,
@@ -744,8 +726,28 @@ pub async fn QdrantClient::overwrite_payload(
 }
 
 ///|
+/// Overwrite the payload of the given points via
+/// `PUT /collections/{name}/points/payload`.
+///
+/// Unlike `set_payload`, the whole payload is replaced by the given object;
+/// existing fields not in the given object are removed.
+pub async fn QdrantClient::overwrite_payload(
+  self : QdrantClient,
+  name : String,
+  payload : Json,
+  ids? : Array[Int]? = None,
+  filter? : Filter? = None,
+  wait? : Bool = true,
+) -> Unit {
+  let path = "/collections/" + name + "/points/payload?wait=" + wait.to_string()
+  let body = payload_operation_body(payload, ids, filter)
+  let json = self.request_json(Put, path, Some(body))
+  ignore(json)
+}
+
+///|
 /// Delete the whole payload of the selected points via
-/// `POST /collections/{name}/points/payload/delete`.
+/// `POST /collections/{name}/points/payload/clear`.
 ///
 /// Pass either `ids` or `filter` to select the target points. To remove only
 /// some keys, use `delete_payload_by_keys`.
@@ -758,9 +760,9 @@ pub async fn QdrantClient::delete_payload(
 ) -> Unit {
   let path = "/collections/" +
     name +
-    "/points/payload/delete?wait=" +
+    "/points/payload/clear?wait=" +
     wait.to_string()
-  let body = payload_operation_body(Json::object({}), ids, filter)
+  let body = point_selector_body(ids, filter)
   let json = self.request_json(Post, path, Some(body))
   ignore(json)
 }
@@ -786,7 +788,7 @@ pub async fn QdrantClient::delete_payload_by_keys(
   for key in keys {
     key_json.push(Json::string(key))
   }
-  let body = payload_operation_body(Json::object({}), ids, filter)
+  let body = point_selector_body(ids, filter)
   let members = match body {
     Object(m) => m
     _ => Map([])
@@ -794,6 +796,29 @@ pub async fn QdrantClient::delete_payload_by_keys(
   members["keys"] = Json::array(key_json)
   let json = self.request_json(Post, path, Some(Json::object(members)))
   ignore(json)
+}
+
+///|
+/// Build the shared point selector for payload delete/clear operations:
+/// either `{ "points": [ids] }` or `{ "filter": ... }`. Unlike the write
+/// operations, delete/clear bodies must not carry a `"payload"` field.
+fn point_selector_body(ids : Array[Int]?, filter : Filter?) -> Json {
+  let members : Map[String, Json] = Map([])
+  match ids {
+    Some(ids_arr) => {
+      let id_json : Array[Json] = []
+      for id in ids_arr {
+        id_json.push(Json::number(id.to_double()))
+      }
+      members["points"] = Json::array(id_json)
+    }
+    None => ()
+  }
+  match filter {
+    Some(f) => members["filter"] = f.to_json()
+    None => ()
+  }
+  Json::object(members)
 }
 
 ///|

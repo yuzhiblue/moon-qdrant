@@ -170,6 +170,23 @@ async fn main {
   client.upsert_points(named_collection, [
     @moon_qdrant.PointStruct::new_named(1, nv_points, { "tag": "alpha" }),
   ])
+  // batch upsert on the named-vector collection: vectors must be written
+  // through POST /points/batch with {name: [...]} vector objects
+  let nv_point2 : Map[String, Array[Double]] = Map([])
+  nv_point2["text"] = [0.2, 0.1, 0.4, 0.3]
+  nv_point2["image"] = [2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0]
+  client.upsert_points_batch(named_collection, [
+    @moon_qdrant.PointStruct::new_named(2, nv_point2, { "tag": "beta" }),
+  ])
+  let nv_count = client.count_points(named_collection, filter=None, exact=false)
+  check("batch upsert on named collection", nv_count == 2)
+  let nv_hits = client.search_points(
+    named_collection,
+    [0.2, 0.1, 0.4, 0.3],
+    1,
+    using_vector=Some("text"),
+  )
+  check("named batch vector searchable", nv_hits.length() == 1)
   client.create_payload_index(named_collection, "tag", "keyword")
   let nv_groups = client.search_points_groups(
     named_collection,
@@ -186,6 +203,30 @@ async fn main {
   client.delete_collection(named_collection)
   check("named collection deleted", !client.collection_exists(named_collection))
 
+  // batch upsert on the dense collection: POST /points/batch
+  let batch_p1 = @moon_qdrant.PointStruct::new(100, [0.4, 0.3, 0.2, 0.1], {
+    "tag": "batch",
+  })
+  let batch_p2 = @moon_qdrant.PointStruct::new(101, [0.5, 0.4, 0.3, 0.2], {
+    "tag": "batch",
+  })
+  client.upsert_points_batch(collection, [batch_p1, batch_p2])
+  let dense_batch_count = client.count_points(
+    collection,
+    filter=None,
+    exact=false,
+  )
+  check("batch upsert on dense collection", dense_batch_count >= 7)
+  let batch_hits = client.search_points(collection, [0.4, 0.3, 0.2, 0.1], 1)
+  check("dense batch vector searchable", batch_hits.length() == 1)
+  client.delete_points(collection, [100, 101])
+  let after_batch_clean = client.count_points(
+    collection,
+    filter=None,
+    exact=false,
+  )
+  check("batch points cleaned up", after_batch_clean == 5)
+
   // payload operations
   client.set_payload(
     collection,
@@ -195,15 +236,58 @@ async fn main {
   match client.get_point(collection, 1) {
     Some(p) =>
       match p.payload {
-        Object(members) =>
+        Object(members) => {
           match members.get("active") {
-            Some(True) => check("set_payload merged", true)
-            _ => raise Failure("set_payload did not merge")
+            Some(True) => check("set_payload added new field", true)
+            _ => raise Failure("set_payload did not add the field")
           }
+          // merge semantics: the pre-existing "tag" field must survive
+          match members.get("tag") {
+            Some(_) => check("set_payload kept existing field", true)
+            _ => raise Failure("set_payload dropped existing fields")
+          }
+        }
         _ => raise Failure("payload missing after set_payload")
       }
     None => raise Failure("point 1 missing")
   }
+  // overwrite semantics: the whole payload is replaced
+  client.overwrite_payload(
+    collection,
+    { "fresh": Json::string("yes") },
+    ids=Some([1]),
+  )
+  match client.get_point(collection, 1) {
+    Some(p) =>
+      match p.payload {
+        Object(members) =>
+          check(
+            "overwrite_payload replaced payload",
+            members.get("fresh") == Some(Json::string("yes")) &&
+            members.get("tag") is None &&
+            members.get("active") is None,
+          )
+        _ => raise Failure("payload missing after overwrite")
+      }
+    None => raise Failure("point 1 missing")
+  }
+  // delete_payload clears the whole payload (POST /points/payload/clear)
+  client.delete_payload(collection, ids=Some([1]))
+  match client.get_point(collection, 1) {
+    Some(p) =>
+      match p.payload {
+        Object(members) =>
+          check("delete_payload cleared payload", members.is_empty())
+        _ => raise Failure("payload missing after clear")
+      }
+    None => raise Failure("point 1 missing")
+  }
+  // restore payload for the remaining checks
+  client.set_payload(
+    collection,
+    { "tag": Json::string("alpha"), "active": Json::boolean(true) },
+    ids=Some([1]),
+  )
   client.delete_payload_by_keys(collection, ["active"], ids=Some([1]))
   match client.get_point(collection, 1) {
     Some(p) =>

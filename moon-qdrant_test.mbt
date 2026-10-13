@@ -1009,6 +1009,20 @@ test "int64_of_json falls back to the double for repr-less numbers" {
 }
 
 ///|
+test "int64_to_json keeps the exact decimal text for u64 peer ids" {
+  // A u64 peer id beyond 2^53 must not be rounded by the double fallback.
+  let json = @moon-qdrant.int64_to_json(4992814939605239477L)
+  match json {
+    Object(_) => fail("expected a number")
+    _ => ()
+  }
+  assert_true(json.stringify() == "4992814939605239477")
+  // small ids stay plain numbers
+  let small = @moon-qdrant.int64_to_json(12L)
+  assert_true(small.stringify() == "12")
+}
+
+///|
 test "int64_to_json serializes as a plain number" {
   let json = @moon-qdrant.int64_to_json(12L)
   match json {

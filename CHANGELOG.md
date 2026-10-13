@@ -4,6 +4,39 @@ All notable changes to moon-qdrant are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.4.2] - 2026-10-13
+
+### Fixed
+
+- **Batch upsert now uses `POST /collections/{name}/points/batch`** instead of
+  `PUT`. The batch endpoint only accepts POST; the previous method returned
+  404 for both dense and named-vector points. Named-vector points keep their
+  `{ "name": [...] }` vector objects (regression fixed in 0.4.1 on GitHub
+  main but not shipped to mooncakes).
+- **`set_payload` / `overwrite_payload` no longer swapped**: `set_payload`
+  now uses `POST /points/payload` (merge: keeps existing fields) and
+  `overwrite_payload` uses `PUT /points/payload` (replace: removes fields
+  absent from the new object). Previously the two methods were reversed and
+  `set_payload` silently dropped existing payload fields.
+- **`delete_payload` now targets `POST /points/payload/clear`** (the clear
+  payload endpoint) with a body that contains only the point selector
+  (`points` or `filter`). The previous implementation hit `/payload/delete`
+  with a stray `"payload": {}` field, which Qdrant rejects with 400.
+- **`delete_payload_by_keys` no longer sends the stray `"payload": {}`**
+  field; the body is now `{ "keys": [...], "points" | "filter": ... }`.
+- **Peer and shard ids are serialized losslessly**: `int64_to_json` keeps the
+  exact decimal text via the JSON number `repr`, so u64 peer ids beyond 2^53
+  are no longer rounded to a different value. Replicate / create / delete
+  shard replica operations now send valid ids (previously 400 on
+  distributed clusters).
+
+### Changed
+
+- Integration check now covers batch upsert (dense and named-vector),
+  set/overwrite merge-vs-replace semantics, and full payload deletion
+  against a real Qdrant server.
+- Added a unit test pinning `int64_to_json` to the exact decimal text.
+
 ## [0.4.1] - 2026-09-21
 
 ### Changed

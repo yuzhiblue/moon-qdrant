@@ -1190,11 +1190,12 @@ pub fn int64_of_json(json : Json) -> Int64? {
 }
 
 ///|
-/// Serialize an Int64 as a JSON number. Values within the exact-double range
-/// (|v| < 2^53) round-trip losslessly; peer ids from Qdrant are u64 but in
-/// practice stay well below that bound.
+/// Serialize an Int64 as a JSON number, keeping the exact decimal text.
+/// Qdrant peer ids are u64 and routinely exceed 2^53, where a plain
+/// Double round-trip would silently change the id; the `repr` keeps the
+/// wire form identical to the original integer.
 pub fn int64_to_json(v : Int64) -> Json {
-  Json::number(v.to_double())
+  Json::number(v.to_double(), repr=v.to_string())
 }
 
 ///|
