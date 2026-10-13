@@ -234,6 +234,29 @@ test "point struct round-trips through json" {
 }
 
 ///|
+test "point struct round-trips a large id beyond Int32" {
+  // Qdrant point ids are u64; ids beyond 2^31 must survive the round trip
+  // exactly (this used to be truncated by the Int32 id type).
+  let big = 3000000000L
+  let point = @moon-qdrant.PointStruct::new(big, [1.0, 2.0], {})
+  let json = point.to_json()
+  match @moon-qdrant.PointStruct::from_json(json) {
+    Some(parsed) => assert_true(parsed.id == big)
+    None => fail("expected a point struct")
+  }
+  // and a server-style response with the textual repr
+  let server_json : Json = {
+    "id": exact_num("3000000000"),
+    "vector": [1.0, 2.0],
+    "payload": {},
+  }
+  match @moon-qdrant.PointStruct::from_json(server_json) {
+    Some(parsed) => assert_true(parsed.id == big)
+    None => fail("expected a point struct")
+  }
+}
+
+///|
 test "scored point parses a search hit" {
   let json : Json = {
     "id": 1,
@@ -254,6 +277,20 @@ test "scored point parses a search hit" {
         None => fail("expected a payload")
       }
     }
+    None => fail("expected a scored point")
+  }
+}
+
+///|
+test "scored point parses a large id beyond Int32" {
+  let big = 3000000000L
+  let json : Json = {
+    "id": exact_num("3000000000"),
+    "score": 0.99,
+    "payload": {},
+  }
+  match @moon-qdrant.ScoredPoint::from_json(json) {
+    Some(hit) => assert_true(hit.id == big)
     None => fail("expected a scored point")
   }
 }

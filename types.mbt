@@ -140,7 +140,7 @@ pub fn vector_to_json(vector : Array[Double]) -> Json {
 /// A single point: an id, either a dense vector or a set of named vectors,
 /// and an optional JSON payload.
 pub struct PointStruct {
-  id : Int32
+  id : Int64
   vector : Array[Double]
   named_vectors : Map[String, Array[Double]]?
   payload : Json
@@ -149,7 +149,7 @@ pub struct PointStruct {
 ///|
 /// Create a point with a single dense vector.
 pub fn PointStruct::new(
-  id : Int32,
+  id : Int64,
   vector : Array[Double],
   payload : Json,
 ) -> PointStruct {
@@ -160,7 +160,7 @@ pub fn PointStruct::new(
 /// Create a point with named vectors, e.g.
 /// `{ "text": [0.1, 0.2], "image": [0.5, 0.6, 0.7] }`.
 pub fn PointStruct::new_named(
-  id : Int32,
+  id : Int64,
   named_vectors : Map[String, Array[Double]],
   payload : Json,
 ) -> PointStruct {
@@ -189,7 +189,7 @@ pub fn PointStruct::vector_json(self : PointStruct) -> Json {
 /// `{ "id": 1, "vector": [...] | {"name": [...]}, "payload": {...} }`.
 pub fn PointStruct::to_json(self : PointStruct) -> Json {
   {
-    "id": Json::number(self.id.to_double()),
+    "id": int64_to_json(self.id),
     "vector": self.vector_json(),
     "payload": self.payload,
   }
@@ -203,7 +203,11 @@ pub fn PointStruct::to_json(self : PointStruct) -> Json {
 pub fn PointStruct::from_json(json : Json) -> PointStruct? {
   guard json is Object(members) else { return None }
   let id = match members.get("id") {
-    Some(Number(n, ..)) => n.to_int()
+    Some(num) =>
+      match int64_of_json(num) {
+        Some(v) => v
+        None => return None
+      }
     _ => return None
   }
   let payload = members.get("payload").unwrap_or(Json::object({}))
@@ -333,7 +337,7 @@ pub fn CollectionInfo::from_json(json : Json) -> CollectionInfo? {
 /// One hit returned by the search endpoint: a point id, its similarity score,
 /// and the payload attached to the point (when requested).
 pub struct ScoredPoint {
-  id : Int32
+  id : Int64
   score : Double
   payload : Json?
 }
@@ -344,7 +348,11 @@ pub struct ScoredPoint {
 pub fn ScoredPoint::from_json(json : Json) -> ScoredPoint? {
   guard json is Object(members) else { return None }
   let id = match members.get("id") {
-    Some(Number(n, ..)) => n.to_int()
+    Some(num) =>
+      match int64_of_json(num) {
+        Some(v) => v
+        None => return None
+      }
     _ => return None
   }
   let score = match members.get("score") {
@@ -566,7 +574,7 @@ pub fn Filter::to_json(self : Filter) -> Json {
 /// current page, and the next page offset when more pages remain.
 pub struct ScrollResult {
   points : Array[PointStruct]
-  next_page_offset : Int32?
+  next_page_offset : Int64?
 }
 
 ///|
@@ -585,9 +593,12 @@ pub fn ScrollResult::from_json(json : Json) -> ScrollResult? {
     }
   }
   let next_page_offset = match members.get("next_page_offset") {
-    Some(Number(n, ..)) => Some(n.to_int())
+    Some(num) =>
+      match int64_of_json(num) {
+        Some(v) => Some(v)
+        None => None
+      }
     None => None
-    _ => None
   }
   Some({ points, next_page_offset, })
 }
@@ -694,7 +705,7 @@ pub fn parse_aliases(json : Json) -> Array[AliasInfo]? {
 pub fn scroll_request_body(
   limit : Int32,
   filter : Filter?,
-  offset : Int32?,
+  offset : Int64?,
   with_payload : Bool,
   with_vector : Bool,
 ) -> Json {
@@ -707,7 +718,7 @@ pub fn scroll_request_body(
     None => ()
   }
   match offset {
-    Some(o) => members["offset"] = Json::number(o.to_double())
+    Some(o) => members["offset"] = int64_to_json(o)
     None => ()
   }
   Json::object(members)

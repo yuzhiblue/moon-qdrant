@@ -356,7 +356,7 @@ pub async fn QdrantClient::upsert_points_batch(
   let ids : Array[Json] = []
   let payloads : Array[Json] = []
   for p in points {
-    ids.push(Json::number(p.id.to_double()))
+    ids.push(int64_to_json(p.id))
     payloads.push(p.payload)
   }
   // The batch endpoint accepts a transposed vector layout: for dense points
@@ -411,7 +411,7 @@ pub async fn QdrantClient::upsert_points_batch(
 pub async fn QdrantClient::get_point(
   self : QdrantClient,
   name : String,
-  id : Int32,
+  id : Int64,
   with_payload~ : Bool = true,
   with_vector~ : Bool = true,
 ) -> PointStruct? {
@@ -444,7 +444,7 @@ pub async fn QdrantClient::get_point(
 pub async fn QdrantClient::delete_points(
   self : QdrantClient,
   name : String,
-  ids : Array[Int32],
+  ids : Array[Int64],
   wait~ : Bool = true,
 ) -> Unit {
   let path = "/collections/" +
@@ -480,7 +480,7 @@ pub async fn QdrantClient::search_points(
   with_payload~ : Bool = true,
   with_vector~ : Bool = false,
   score_threshold~ : Double? = None,
-  offset~ : Int32? = None,
+  offset~ : Int64? = None,
   using_vector~ : String? = None,
   search_params~ : SearchParams? = None,
 ) -> Array[ScoredPoint] {
@@ -511,7 +511,7 @@ pub async fn QdrantClient::search_points_named(
   with_payload~ : Bool = true,
   with_vector~ : Bool = false,
   score_threshold~ : Double? = None,
-  offset~ : Int32? = None,
+  offset~ : Int64? = None,
   search_params~ : SearchParams? = None,
 ) -> Array[ScoredPoint] {
   self.search_points_raw(
@@ -540,7 +540,7 @@ async fn QdrantClient::search_points_raw(
   with_payload : Bool,
   with_vector : Bool,
   score_threshold : Double?,
-  offset : Int32?,
+  offset : Int64?,
   using_vector : String?,
   search_params : SearchParams?,
 ) -> Array[ScoredPoint] {
@@ -568,7 +568,7 @@ async fn QdrantClient::search_points_raw(
     None => ()
   }
   match offset {
-    Some(o) => base["offset"] = Json::number(o.to_double())
+    Some(o) => base["offset"] = int64_to_json(o)
     None => ()
   }
   match search_params {
@@ -596,7 +596,7 @@ pub async fn QdrantClient::search_points_with_filter(
   with_payload~ : Bool = true,
   with_vector~ : Bool = false,
   score_threshold~ : Double? = None,
-  offset~ : Int32? = None,
+  offset~ : Int64? = None,
   using_vector~ : String? = None,
   search_params~ : SearchParams? = None,
 ) -> Array[ScoredPoint] {
@@ -626,7 +626,7 @@ pub async fn QdrantClient::scroll_points(
   name : String,
   limit : Int32,
   filter~ : Filter? = None,
-  offset~ : Int32? = None,
+  offset~ : Int64? = None,
   with_payload~ : Bool = true,
   with_vector~ : Bool = true,
 ) -> ScrollResult {
@@ -680,7 +680,7 @@ pub async fn QdrantClient::count_points(
 pub async fn QdrantClient::retrieve_points(
   self : QdrantClient,
   name : String,
-  ids : Array[Int32],
+  ids : Array[Int64],
   with_payload~ : Bool = true,
   with_vector~ : Bool = true,
 ) -> Array[PointStruct] {
@@ -841,7 +841,7 @@ pub async fn QdrantClient::set_payload(
   self : QdrantClient,
   name : String,
   payload : Json,
-  ids~ : Array[Int32]? = None,
+  ids~ : Array[Int64]? = None,
   filter~ : Filter? = None,
   wait~ : Bool = true,
 ) -> Unit {
@@ -864,7 +864,7 @@ pub async fn QdrantClient::overwrite_payload(
   self : QdrantClient,
   name : String,
   payload : Json,
-  ids~ : Array[Int32]? = None,
+  ids~ : Array[Int64]? = None,
   filter~ : Filter? = None,
   wait~ : Bool = true,
 ) -> Unit {
@@ -886,7 +886,7 @@ pub async fn QdrantClient::overwrite_payload(
 pub async fn QdrantClient::delete_payload(
   self : QdrantClient,
   name : String,
-  ids~ : Array[Int32]? = None,
+  ids~ : Array[Int64]? = None,
   filter~ : Filter? = None,
   wait~ : Bool = true,
 ) -> Unit {
@@ -908,7 +908,7 @@ pub async fn QdrantClient::delete_payload_by_keys(
   self : QdrantClient,
   name : String,
   keys : Array[String],
-  ids~ : Array[Int32]? = None,
+  ids~ : Array[Int64]? = None,
   filter~ : Filter? = None,
   wait~ : Bool = true,
 ) -> Unit {
@@ -934,13 +934,13 @@ pub async fn QdrantClient::delete_payload_by_keys(
 /// Build the shared point selector for payload delete/clear operations:
 /// either `{ "points": [ids] }` or `{ "filter": ... }`. Unlike the write
 /// operations, delete/clear bodies must not carry a `"payload"` field.
-fn point_selector_body(ids : Array[Int32]?, filter : Filter?) -> Json {
+fn point_selector_body(ids : Array[Int64]?, filter : Filter?) -> Json {
   let members : Map[String, Json] = Map([])
   match ids {
     Some(ids_arr) => {
       let id_json : Array[Json] = []
       for id in ids_arr {
-        id_json.push(Json::number(id.to_double()))
+        id_json.push(int64_to_json(id))
       }
       members["points"] = Json::array(id_json)
     }
@@ -958,7 +958,7 @@ fn point_selector_body(ids : Array[Int32]?, filter : Filter?) -> Json {
 /// plus either `"points": [ids]` or `"filter": ...`.
 fn payload_operation_body(
   payload : Json,
-  ids : Array[Int32]?,
+  ids : Array[Int64]?,
   filter : Filter?,
 ) -> Json {
   let members : Map[String, Json] = Map([])
@@ -967,7 +967,7 @@ fn payload_operation_body(
     Some(ids_arr) => {
       let id_json : Array[Json] = []
       for id in ids_arr {
-        id_json.push(Json::number(id.to_double()))
+        id_json.push(int64_to_json(id))
       }
       members["points"] = Json::array(id_json)
     }

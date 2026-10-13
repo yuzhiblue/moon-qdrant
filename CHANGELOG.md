@@ -4,6 +4,17 @@ All notable changes to moon-qdrant are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.5.0] - 2026-10-13
+
+### Breaking
+
+- **Point ids are now `Int64`** (was `Int32`), matching Qdrant's u64 point
+  ids. `PointStruct.id`, `ScoredPoint.id`, the `id` argument of `get_point`,
+  the `ids` arguments of `delete_points` / `retrieve_points` / payload
+  operations, and the scroll `offset` are all `Int64`. Ids beyond the 32-bit
+  range now round-trip exactly instead of being silently truncated; large-id
+  round trips are covered by unit and real-server integration tests.
+
 ## [0.4.6] - 2026-10-13
 
 ### Fixed

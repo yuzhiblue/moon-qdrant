@@ -237,6 +237,24 @@ async fn main {
   )
   check("batch points cleaned up", after_batch_clean == 3)
 
+  // large ids beyond Int32 (Qdrant ids are u64): upsert, read, search and
+  // delete must round-trip the id exactly
+  let big_id = 3000000000L
+  client.upsert_points(collection, [
+    @moon_qdrant.PointStruct::new(big_id, [0.2, 0.3, 0.4, 0.5], { "tag": "big" }),
+  ])
+  match client.get_point(collection, big_id) {
+    Some(p) => check("large id get_point", p.id == big_id)
+    None => raise Failure("large id point missing")
+  }
+  let big_hits = client.search_points(collection, [0.2, 0.3, 0.4, 0.5], 1)
+  check(
+    "large id search hit",
+    big_hits.length() == 1 && big_hits[0].id == big_id,
+  )
+  client.delete_points(collection, [big_id])
+  check("large id deleted", client.get_point(collection, big_id) is None)
+
   // payload operations
   client.set_payload(
     collection,

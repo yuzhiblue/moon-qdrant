@@ -60,6 +60,12 @@ client.upsert_points("demo", [
   PointStruct::new(2, [0.5, 0.6, 0.7, 0.8], { "tag": "beta" }),
 ])
 
+// ids are Int64, matching Qdrant's u64 point ids; large ids round-trip
+// exactly (ids beyond the 32-bit range are fully supported):
+client.upsert_points("demo", [
+  PointStruct::new(3000000000L, [0.2, 0.3, 0.4, 0.5], { "tag": "big" }),
+])
+
 // read one back
 let point = client.get_point("demo", 1)
 
