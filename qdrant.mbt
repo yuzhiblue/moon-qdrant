@@ -255,17 +255,19 @@ pub async fn QdrantClient::upsert_points(
 }
 
 ///|
-/// Upsert points through the batch endpoint via
-/// `PUT /collections/{name}/points/batch`.
+/// Upsert points through the batch (column-oriented) format via
+/// `PUT /collections/{name}/points`.
 /// The batch format packs ids, vectors and payloads into parallel arrays,
-/// which Qdrant applies as a single request.
+/// which Qdrant applies as a single request. This is the classic batch
+/// loading endpoint; `/points/batch` is the newer multi-operation endpoint
+/// (body `{"operations": [...]}`) and is NOT used here.
 pub async fn QdrantClient::upsert_points_batch(
   self : QdrantClient,
   name : String,
   points : Array[PointStruct],
   wait~ : Bool = true,
 ) -> Unit {
-  let path = "/collections/" + name + "/points/batch?wait=" + wait.to_string()
+  let path = "/collections/" + name + "/points?wait=" + wait.to_string()
   let ids : Array[Json] = []
   let vectors : Array[Json] = []
   let payloads : Array[Json] = []
@@ -281,7 +283,7 @@ pub async fn QdrantClient::upsert_points_batch(
       "payloads": Json::array(payloads),
     },
   }
-  let json = self.request_json(Post, path, Some(body))
+  let json = self.request_json(Put, path, Some(body))
   ignore(json)
 }
 

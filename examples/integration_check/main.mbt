@@ -171,7 +171,8 @@ async fn main {
     @moon_qdrant.PointStruct::new_named(1, nv_points, { "tag": "alpha" }),
   ])
   // batch upsert on the named-vector collection: vectors must be written
-  // through POST /points/batch with {name: [...]} vector objects
+  // through PUT /points with the column-oriented {batch: {...}} body and
+  // {name: [...]} vector objects
   let nv_point2 : Map[String, Array[Double]] = Map([])
   nv_point2["text"] = [0.2, 0.1, 0.4, 0.3]
   nv_point2["image"] = [2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0]
@@ -203,7 +204,7 @@ async fn main {
   client.delete_collection(named_collection)
   check("named collection deleted", !client.collection_exists(named_collection))
 
-  // batch upsert on the dense collection: POST /points/batch
+  // batch upsert on the dense collection: PUT /points with {batch: {...}}
   let batch_p1 = @moon_qdrant.PointStruct::new(100, [0.4, 0.3, 0.2, 0.1], {
     "tag": "batch",
   })
