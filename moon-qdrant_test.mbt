@@ -728,6 +728,46 @@ test "collection update serializes named vector updates" {
 }
 
 ///|
+test "collection update wraps dense vector params under the empty name" {
+  // Qdrant >= 1.13 requires a vector name in PATCH updates; dense
+  // collections use the empty name, so the wire shape must be
+  // {"vectors": {"": {size, distance}}} rather than a bare params object.
+  let update = @moon-qdrant.CollectionUpdate::new(
+    vectors=Some(
+      @moon-qdrant.VectorParams::new(4, @moon-qdrant.Distance::Cosine),
+    ),
+  )
+  let json = update.to_json()
+  match field(json, "vectors") {
+    Some(Object(vectors)) =>
+      match vectors.get("") {
+        Some(Object(params)) =>
+          match params.get("size") {
+            Some(Number(n, ..)) => assert_true(n == 4.0)
+            _ => fail("expected size under the empty vector name")
+          }
+        _ => fail("expected dense params under the empty name")
+      }
+    _ => fail("expected vectors object")
+  }
+}
+
+///|
+test "url_encode passes unreserved characters through" {
+  assert_eq("demo_collection-2", @moon-qdrant.url_encode("demo_collection-2"))
+  assert_eq("a.b~c", @moon-qdrant.url_encode("a.b~c"))
+}
+
+///|
+test "url_encode percent-encodes reserved characters" {
+  assert_eq(
+    "my%20col%2Flection%23x",
+    @moon-qdrant.url_encode("my col/lection#x"),
+  )
+  assert_eq("%E4%B8%AD%E6%96%87", @moon-qdrant.url_encode("中文"))
+}
+
+///|
 test "snapshot info parses a snapshot entry" {
   let json : Json = {
     "name": "snap-1",

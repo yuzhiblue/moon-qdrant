@@ -46,6 +46,81 @@ pub fn join_url(base : String, path : String) -> String {
 }
 
 ///|
+/// Percent-encode a path segment for use in a Qdrant URL. Qdrant accepts a
+/// broad character set in collection, field and snapshot names (not just
+/// ASCII alphanumerics), so unreserved characters pass through and everything
+/// else is percent-encoded.
+pub fn url_encode(input : String) -> String {
+  let mut out = ""
+  for i in 0..<input.length() {
+    let unit = input[i]
+    if is_unreserved(unit) {
+      out = out + Int32::unsafe_to_char(unit.to_int()).to_string()
+    } else {
+      out = out + encode_char(unit)
+    }
+  }
+  out
+}
+
+///|
+/// RFC 3986 unreserved characters pass through a URL path unencoded.
+/// `s[i]` yields a UTF-16 code unit (UInt16), which for ASCII and BMP
+/// characters equals the code point.
+fn is_unreserved(c : UInt16) -> Bool {
+  let n = c.to_int()
+  (n >= 48 && n <= 57) ||
+  (n >= 65 && n <= 90) ||
+  (n >= 97 && n <= 122) ||
+  c == '-' ||
+  c == '_' ||
+  c == '.' ||
+  c == '~'
+}
+
+///|
+/// Percent-encode one UTF-8 character as `%XX` per byte. The input is a
+/// UTF-16 code unit from `s[i]`; ASCII passes through as one byte, BMP
+/// characters are encoded as 2-3 UTF-8 bytes. (Supplementary-plane
+/// characters arrive as surrogate pairs and are out of scope for path
+/// segments.)
+fn encode_char(c : UInt16) -> String {
+  let cp = c.to_int()
+  if cp < 0x80 {
+    "%" + hex_digit(cp / 16) + hex_digit(cp % 16)
+  } else if cp < 0x800 {
+    let b1 = 0xC0 | (cp >> 6)
+    let b2 = 0x80 | (cp & 0x3F)
+    "%" +
+    hex_digit(b1 / 16) +
+    hex_digit(b1 % 16) +
+    "%" +
+    hex_digit(b2 / 16) +
+    hex_digit(b2 % 16)
+  } else {
+    let b1 = 0xE0 | (cp >> 12)
+    let b2 = 0x80 | ((cp >> 6) & 0x3F)
+    let b3 = 0x80 | (cp & 0x3F)
+    "%" +
+    hex_digit(b1 / 16) +
+    hex_digit(b1 % 16) +
+    "%" +
+    hex_digit(b2 / 16) +
+    hex_digit(b2 % 16) +
+    "%" +
+    hex_digit(b3 / 16) +
+    hex_digit(b3 % 16)
+  }
+}
+
+///|
+/// One uppercase hex digit for a nibble value in 0..=15.
+fn hex_digit(v : Int32) -> String {
+  let hex = "0123456789ABCDEF"
+  Int32::unsafe_to_char(hex[v].to_int()).to_string()
+}
+
+///|
 /// Send a request and return the HTTP status code together with the raw
 /// text body (before JSON parsing).
 async fn QdrantClient::send_raw(
@@ -156,9 +231,10 @@ async fn QdrantClient::request_json(
 ///|
 /// Check the server health via `GET /healthz`.
 /// Qdrant answers this endpoint with plain text ("healthz check passed"),
-/// so only the HTTP status code is inspected: 200 means healthy.
+/// so only the HTTP status code is inspected: 200 means healthy. Transport
+/// failures (server not reachable) also report unhealthy instead of raising.
 pub async fn QdrantClient::health(self : QdrantClient) -> Bool {
-  let code = self.send_status(Get, "/healthz", None)
+  let code = self.send_status(Get, "/healthz", None) catch { _ => return false }
   code == 200
 }
 
@@ -182,7 +258,7 @@ pub async fn QdrantClient::create_collection(
   name : String,
   config : CollectionConfig,
 ) -> Unit {
-  let path = "/collections/" + name
+  let path = "/collections/" + url_encode(name)
   let json = self.request_json(Put, path, Some(config.to_json()))
   // Qdrant answers with {"result": true} on success; treat any 2xx as success.
   ignore(json)
@@ -195,7 +271,7 @@ pub async fn QdrantClient::collection_info(
   self : QdrantClient,
   name : String,
 ) -> CollectionInfo {
-  let path = "/collections/" + name
+  let path = "/collections/" + url_encode(name)
   let json = self.request_json(Get, path, None)
   match CollectionInfo::from_json(json) {
     Some(info) => info
@@ -211,7 +287,7 @@ pub async fn QdrantClient::delete_collection(
   self : QdrantClient,
   name : String,
 ) -> Unit {
-  let path = "/collections/" + name
+  let path = "/collections/" + url_encode(name)
   let json = self.request_json(Delete, path, None)
   ignore(json)
 }
@@ -223,7 +299,7 @@ pub async fn QdrantClient::collection_exists(
   self : QdrantClient,
   name : String,
 ) -> Bool {
-  let path = "/collections/" + name
+  let path = "/collections/" + url_encode(name)
   let (code, _) = self.send(Get, path, None)
   if code >= 200 && code < 300 {
     true
@@ -244,7 +320,10 @@ pub async fn QdrantClient::upsert_points(
   points : Array[PointStruct],
   wait~ : Bool = true,
 ) -> Unit {
-  let path = "/collections/" + name + "/points?wait=" + wait.to_string()
+  let path = "/collections/" +
+    url_encode(name) +
+    "/points?wait=" +
+    wait.to_string()
   let point_json : Array[Json] = []
   for p in points {
     point_json.push(p.to_json())
@@ -267,7 +346,10 @@ pub async fn QdrantClient::upsert_points_batch(
   points : Array[PointStruct],
   wait~ : Bool = true,
 ) -> Unit {
-  let path = "/collections/" + name + "/points?wait=" + wait.to_string()
+  let path = "/collections/" +
+    url_encode(name) +
+    "/points?wait=" +
+    wait.to_string()
   if points.is_empty() {
     return
   }
@@ -334,7 +416,7 @@ pub async fn QdrantClient::get_point(
   with_vector~ : Bool = true,
 ) -> PointStruct? {
   let path = "/collections/" +
-    name +
+    url_encode(name) +
     "/points/" +
     id.to_string() +
     "?with_payload=" +
@@ -365,7 +447,10 @@ pub async fn QdrantClient::delete_points(
   ids : Array[Int32],
   wait~ : Bool = true,
 ) -> Unit {
-  let path = "/collections/" + name + "/points/delete?wait=" + wait.to_string()
+  let path = "/collections/" +
+    url_encode(name) +
+    "/points/delete?wait=" +
+    wait.to_string()
   let id_json : Array[Json] = []
   for id in ids {
     id_json.push(Json::number(id.to_double()))
@@ -459,7 +544,7 @@ async fn QdrantClient::search_points_raw(
   using_vector : String?,
   search_params : SearchParams?,
 ) -> Array[ScoredPoint] {
-  let path = "/collections/" + name + "/points/search"
+  let path = "/collections/" + url_encode(name) + "/points/search"
   let base : Map[String, Json] = Map([])
   // On a collection with named vectors the search API requires the vector
   // name inside the vector object ({"name": ..., "vector": [...]}); there is
@@ -545,7 +630,7 @@ pub async fn QdrantClient::scroll_points(
   with_payload~ : Bool = true,
   with_vector~ : Bool = true,
 ) -> ScrollResult {
-  let path = "/collections/" + name + "/points/scroll"
+  let path = "/collections/" + url_encode(name) + "/points/scroll"
   let body = scroll_request_body(
     limit, filter, offset, with_payload, with_vector,
   )
@@ -573,7 +658,7 @@ pub async fn QdrantClient::count_points(
   filter~ : Filter? = None,
   exact~ : Bool = false,
 ) -> Int32 {
-  let path = "/collections/" + name + "/points/count"
+  let path = "/collections/" + url_encode(name) + "/points/count"
   let body = count_request_body(filter, exact)
   let json = self.request_json(Post, path, Some(body))
   match parse_result(json) {
@@ -599,7 +684,7 @@ pub async fn QdrantClient::retrieve_points(
   with_payload~ : Bool = true,
   with_vector~ : Bool = true,
 ) -> Array[PointStruct] {
-  let path = "/collections/" + name + "/points"
+  let path = "/collections/" + url_encode(name) + "/points"
   let id_json : Array[Json] = []
   for id in ids {
     id_json.push(Json::number(id.to_double()))
@@ -682,7 +767,10 @@ pub async fn QdrantClient::delete_points_by_filter(
   filter : Filter,
   wait~ : Bool = true,
 ) -> Unit {
-  let path = "/collections/" + name + "/points/delete?wait=" + wait.to_string()
+  let path = "/collections/" +
+    url_encode(name) +
+    "/points/delete?wait=" +
+    wait.to_string()
   let body : Json = { "filter": filter.to_json() }
   let json = self.request_json(Post, path, Some(body))
   ignore(json)
@@ -700,7 +788,7 @@ pub async fn QdrantClient::search_points_batch(
   name : String,
   searches : Array[Json],
 ) -> Array[Array[ScoredPoint]] {
-  let path = "/collections/" + name + "/points/search/batch"
+  let path = "/collections/" + url_encode(name) + "/points/search/batch"
   let body : Json = { "searches": Json::array(searches) }
   let json = self.request_json(Post, path, Some(body))
   let result : Array[Array[ScoredPoint]]? = match json {
@@ -757,7 +845,10 @@ pub async fn QdrantClient::set_payload(
   filter~ : Filter? = None,
   wait~ : Bool = true,
 ) -> Unit {
-  let path = "/collections/" + name + "/points/payload?wait=" + wait.to_string()
+  let path = "/collections/" +
+    url_encode(name) +
+    "/points/payload?wait=" +
+    wait.to_string()
   let body = payload_operation_body(payload, ids, filter)
   let json = self.request_json(Post, path, Some(body))
   ignore(json)
@@ -777,7 +868,10 @@ pub async fn QdrantClient::overwrite_payload(
   filter~ : Filter? = None,
   wait~ : Bool = true,
 ) -> Unit {
-  let path = "/collections/" + name + "/points/payload?wait=" + wait.to_string()
+  let path = "/collections/" +
+    url_encode(name) +
+    "/points/payload?wait=" +
+    wait.to_string()
   let body = payload_operation_body(payload, ids, filter)
   let json = self.request_json(Put, path, Some(body))
   ignore(json)
@@ -797,7 +891,7 @@ pub async fn QdrantClient::delete_payload(
   wait~ : Bool = true,
 ) -> Unit {
   let path = "/collections/" +
-    name +
+    url_encode(name) +
     "/points/payload/clear?wait=" +
     wait.to_string()
   let body = point_selector_body(ids, filter)
@@ -819,7 +913,7 @@ pub async fn QdrantClient::delete_payload_by_keys(
   wait~ : Bool = true,
 ) -> Unit {
   let path = "/collections/" +
-    name +
+    url_encode(name) +
     "/points/payload/delete?wait=" +
     wait.to_string()
   let key_json : Array[Json] = []
@@ -895,7 +989,7 @@ pub async fn QdrantClient::update_collection(
   name : String,
   update : CollectionUpdate,
 ) -> Unit {
-  let path = "/collections/" + name
+  let path = "/collections/" + url_encode(name)
   let json = self.request_json(Patch, path, Some(update.to_json()))
   ignore(json)
 }
@@ -914,7 +1008,10 @@ pub async fn QdrantClient::create_payload_index(
   schema : String,
   wait~ : Bool = true,
 ) -> Unit {
-  let path = "/collections/" + name + "/index?wait=" + wait.to_string()
+  let path = "/collections/" +
+    url_encode(name) +
+    "/index?wait=" +
+    wait.to_string()
   let body : Json = {
     "field_name": Json::string(field),
     "field_schema": Json::string(schema),
@@ -932,9 +1029,9 @@ pub async fn QdrantClient::delete_payload_index(
   wait~ : Bool = true,
 ) -> Unit {
   let path = "/collections/" +
-    name +
+    url_encode(name) +
     "/index/" +
-    field +
+    url_encode(field) +
     "?wait=" +
     wait.to_string()
   let json = self.request_json(Delete, path, None)
@@ -949,7 +1046,7 @@ pub async fn QdrantClient::list_payload_indexes(
   self : QdrantClient,
   name : String,
 ) -> Array[PayloadIndexInfo] {
-  let path = "/collections/" + name
+  let path = "/collections/" + url_encode(name)
   let json = self.request_json(Get, path, None)
   match parse_payload_indexes(json) {
     Some(indexes) => indexes
@@ -965,7 +1062,7 @@ pub async fn QdrantClient::list_snapshots(
   self : QdrantClient,
   name : String,
 ) -> Array[SnapshotInfo] {
-  let path = "/collections/" + name + "/snapshots"
+  let path = "/collections/" + url_encode(name) + "/snapshots"
   let json = self.request_json(Get, path, None)
   match parse_snapshots(json) {
     Some(snapshots) => snapshots
@@ -982,7 +1079,10 @@ pub async fn QdrantClient::create_snapshot(
   name : String,
   wait~ : Bool = true,
 ) -> SnapshotInfo {
-  let path = "/collections/" + name + "/snapshots?wait=" + wait.to_string()
+  let path = "/collections/" +
+    url_encode(name) +
+    "/snapshots?wait=" +
+    wait.to_string()
   let json = self.request_json(Post, path, None)
   match parse_result(json) {
     Some(result) =>
@@ -1004,9 +1104,9 @@ pub async fn QdrantClient::delete_snapshot(
   wait~ : Bool = true,
 ) -> Unit {
   let path = "/collections/" +
-    name +
+    url_encode(name) +
     "/snapshots/" +
-    snapshot +
+    url_encode(snapshot) +
     "?wait=" +
     wait.to_string()
   let json = self.request_json(Delete, path, None)
@@ -1032,7 +1132,7 @@ pub async fn QdrantClient::query_points(
   with_payload~ : Bool = true,
   with_vector~ : Bool = false,
 ) -> Array[ScoredPoint] {
-  let path = "/collections/" + name + "/points/query"
+  let path = "/collections/" + url_encode(name) + "/points/query"
   let members : Map[String, Json] = Map([])
   members["query"] = query
   members["limit"] = Json::number(limit.to_double())
@@ -1135,7 +1235,7 @@ pub async fn QdrantClient::facet_points(
   filter~ : Filter? = None,
   exact~ : Bool = false,
 ) -> FacetResult {
-  let path = "/collections/" + name + "/facet"
+  let path = "/collections/" + url_encode(name) + "/facet"
   let members : Map[String, Json] = Map([])
   members["key"] = Json::string(key)
   members["limit"] = Json::number(limit.to_double())
@@ -1176,7 +1276,7 @@ pub async fn QdrantClient::search_points_groups(
   using_vector~ : String? = None,
   search_params~ : SearchParams? = None,
 ) -> Array[ScoredPointGroup] {
-  let path = "/collections/" + name + "/points/search/groups"
+  let path = "/collections/" + url_encode(name) + "/points/search/groups"
   let members : Map[String, Json] = Map([])
   // Like the search API, the groups endpoint has no top-level "using"
   // field; on a named-vector collection the name goes inside the vector
@@ -1314,7 +1414,7 @@ pub async fn QdrantClient::collection_cluster_info(
   self : QdrantClient,
   name : String,
 ) -> CollectionClusterInfo {
-  let path = "/collections/" + name + "/cluster"
+  let path = "/collections/" + url_encode(name) + "/cluster"
   let json = self.request_json(Get, path, None)
   match parse_result(json) {
     Some(result) =>
@@ -1340,7 +1440,7 @@ async fn QdrantClient::cluster_op(
   name : String,
   body : Json,
 ) -> Bool {
-  let path = "/collections/" + name + "/cluster"
+  let path = "/collections/" + url_encode(name) + "/cluster"
   let json = self.request_json(Post, path, Some(body))
   match parse_result(json) {
     Some(True) => true

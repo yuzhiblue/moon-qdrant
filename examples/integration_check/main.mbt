@@ -54,6 +54,15 @@ async fn main {
   )
   check("collection info vector size", info.vectors is Some(_))
 
+  // update collection settings via PATCH /collections/{name}; a non-vector
+  // update is always accepted on a single node, so this exercises the
+  // request path and the 2xx handling end to end
+  client.update_collection(
+    collection,
+    @moon_qdrant.CollectionUpdate::new(replication_factor=Some(1)),
+  )
+  check("update_collection accepted", true)
+
   // upsert points (wait = true by default)
   client.upsert_points(collection, [
     @moon_qdrant.PointStruct::new(1, [0.1, 0.2, 0.3, 0.4], { "tag": "alpha" }),

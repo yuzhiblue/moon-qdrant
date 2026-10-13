@@ -916,7 +916,11 @@ pub fn CollectionUpdate::new(
 pub fn CollectionUpdate::to_json(self : CollectionUpdate) -> Json {
   let members : Map[String, Json] = Map([])
   match self.vectors {
-    Some(v) => members["vectors"] = v.to_json()
+    Some(v) =>
+      // Qdrant (>= 1.13) requires a vector name when updating vector
+      // parameters via PATCH; collections without named vectors use the
+      // empty name. Older clients sent the params object directly.
+      members["vectors"] = Json::object({ "": v.to_json() })
     None => ()
   }
   match self.named_vectors {
