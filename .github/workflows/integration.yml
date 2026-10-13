@@ -32,11 +32,11 @@ jobs:
         shell: bash
         run: |
           # Latest moon toolchains reject the legacy moon.mod.json manifest
-          # still shipped by bikallem/blit and bikallem/compress. Download
-          # the dependencies first, then migrate those manifests with
-          # `moon fmt` (the officially suggested migration path) before any
-          # build or check.
-          moon install
+          # still shipped by bikallem/blit and bikallem/compress. A first
+          # build downloads the deps (and fails on the legacy manifest);
+          # migrate those manifests with `moon fmt` (the officially
+          # suggested migration path), then the next build succeeds.
+          moon build --target native || true
           for d in $(find .mooncakes -name moon.mod.json | xargs -r dirname); do
             echo "migrating $d"
             (cd "$d" && moon fmt)
