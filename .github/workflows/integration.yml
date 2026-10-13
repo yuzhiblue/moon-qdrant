@@ -36,10 +36,16 @@ jobs:
           # build downloads the deps (and fails on the legacy manifest);
           # migrate those manifests with `moon fmt` (the officially
           # suggested migration path), then the next build succeeds.
-          moon build --target native || true
-          for d in $(find .mooncakes -name moon.mod.json | xargs -r dirname); do
-            echo "migrating $d"
-            (cd "$d" && moon fmt)
+          for i in 1 2 3 4 5; do
+            moon build --target native && break
+            if ! find .mooncakes -name moon.mod.json 2>/dev/null | grep -q .; then
+              echo "no more legacy manifests; the failing build is real"
+              break
+            fi
+            for d in $(find .mooncakes -name moon.mod.json | xargs -r dirname); do
+              echo "migrating $d"
+              (cd "$d" && moon fmt)
+            done
           done
       - name: wait for qdrant
         run: |
