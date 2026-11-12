@@ -60,10 +60,14 @@ client.upsert_points("demo", [
   PointStruct::new(2, [0.5, 0.6, 0.7, 0.8], { "tag": "beta" }),
 ])
 
-// ids are Int64, matching Qdrant's u64 point ids; large ids round-trip
-// exactly (ids beyond the 32-bit range are fully supported):
+// ids are Int64, matching Qdrant's u64 point ids. Even ids above 2^53,
+// where a Double can no longer hold every integer, round-trip exactly:
 client.upsert_points("demo", [
-  PointStruct::new(3000000000L, [0.2, 0.3, 0.4, 0.5], { "tag": "big" }),
+  PointStruct::new(
+    9007199254740993L,
+    [0.2, 0.3, 0.4, 0.5],
+    { "tag": "big" },
+  ),
 ])
 
 // read one back
@@ -227,7 +231,13 @@ for shard in layout.local_shards {
   )
 }
 
-// shard lifecycle (multi-node clusters)
+// shard lifecycle (multi-node clusters). Qdrant's cluster API takes a
+// single-key operation object; `create_shard_replica` maps to the
+// `replicate_shard` operation and `delete_shard_replica` to `drop_replica`,
+// the operation names Qdrant actually accepts. The source peer is looked up
+// automatically; pass `from_peer_id=...` to override. A single-node server
+// answers any cluster operation with "Distributed mode disabled" — that is a
+// server limit, not a malformed request.
 client.replicate_shard("demo", 0L, 1L, 2L)
 client.create_shard_replica("demo", 0L, 2L)
 client.delete_shard_replica("demo", 0L, 2L)

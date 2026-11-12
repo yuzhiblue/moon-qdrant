@@ -1121,6 +1121,50 @@ test "int64_to_json serializes as a plain number" {
 }
 
 ///|
+test "point_ids_to_json keeps ids around and above 2^53 exact" {
+  // delete_points, retrieve_points and the payload selectors all go through
+  // this helper. Converting an id with to_double() would collapse
+  // 9007199254740993 onto 9007199254740992 and hit the neighbouring point.
+  let ids = @moon-qdrant.point_ids_to_json([
+    1L, 9007199254740992L, 9007199254740993L, 9007199254740995L,
+  ])
+  assert_true(
+    ids.stringify() == "[1,9007199254740992,9007199254740993,9007199254740995]",
+  )
+  match ids {
+    Array(arr) => {
+      assert_true(@moon-qdrant.int64_of_json(arr[2]) == Some(9007199254740993L))
+      assert_true(@moon-qdrant.int64_of_json(arr[3]) == Some(9007199254740995L))
+    }
+    _ => fail("expected an array")
+  }
+}
+
+///|
+test "point upsert and response decoding keep ids above 2^53" {
+  let id = 9007199254740993L
+  let point = @moon-qdrant.PointStruct::new(id, [0.1, 0.2], { "tag": "big" })
+  match field(point.to_json(), "id") {
+    Some(num) => {
+      assert_true(num.stringify() == "9007199254740993")
+      assert_true(@moon-qdrant.int64_of_json(num) == Some(id))
+    }
+    None => fail("expected an id")
+  }
+  // A real Qdrant response carries the id as a JSON number. It must be read
+  // from the original decimal text, not from the rounded Double.
+  let reply = @json.parse(
+    "{\"id\":9007199254740993,\"vector\":[0.1,0.2],\"payload\":{\"tag\":\"big\"}}",
+  ) catch {
+    _ => Json::null()
+  }
+  match @moon-qdrant.PointStruct::from_json(reply) {
+    Some(p) => assert_true(p.id == id)
+    None => fail("expected the exact point id")
+  }
+}
+
+///|
 test "peer info parses uri and heartbeat fields" {
   let parsed = Json::object({
     "uri": Json::string("http://peer:6335"),
@@ -1271,59 +1315,60 @@ test "collection cluster info parses local, remote shards and transfers" {
 }
 
 ///|
-test "collection cluster op body builds a replicate_shard payload" {
+test "collection cluster op body wraps replicate_shard parameters" {
   let body = @moon-qdrant.collection_cluster_op_body(
     "replicate_shard",
     0L,
     from_peer_id=Some(1L),
     to_peer_id=Some(2L),
   )
-  match body {
-    Object(members) => {
-      match members.get("method") {
-        Some(String(s)) => assert_true(s == "replicate_shard")
-        _ => fail("expected method")
-      }
-      match members.get("from_peer_id") {
-        Some(Number(n, ..)) => assert_true(n == 1.0)
-        _ => fail("expected from_peer_id")
-      }
-      match members.get("to_peer_id") {
-        Some(Number(n, ..)) => assert_true(n == 2.0)
-        _ => fail("expected to_peer_id")
-      }
-      assert_true(members.get("peer_id") is None)
-    }
-    _ => fail("expected an object")
+  // Qdrant's ClusterOperations is an untagged enum of single-key objects.
+  // A flat body carrying "method" / "shard_id" matches no variant (HTTP 400).
+  assert_true(field(body, "method") is None)
+  assert_true(field(body, "shard_id") is None)
+  let params = match field(body, "replicate_shard") {
+    Some(Object(m)) => m
+    _ => fail("expected a replicate_shard object")
   }
+  match params.get("shard_id") {
+    Some(Number(n, ..)) => assert_true(n == 0.0)
+    _ => fail("expected shard_id")
+  }
+  match params.get("from_peer_id") {
+    Some(Number(n, ..)) => assert_true(n == 1.0)
+    _ => fail("expected from_peer_id")
+  }
+  match params.get("to_peer_id") {
+    Some(Number(n, ..)) => assert_true(n == 2.0)
+    _ => fail("expected to_peer_id")
+  }
+  assert_true(params.get("peer_id") is None)
 }
 
 ///|
-test "collection cluster op body builds a replica lifecycle payload" {
+test "collection cluster op body keeps u64 shard and peer ids exact" {
   let body = @moon-qdrant.collection_cluster_op_body(
-    "create_shard_replica",
-    3L,
-    peer_id=Some(9L),
+    "drop_replica",
+    9007199254740993L,
+    peer_id=Some(9007199254740995L),
   )
-  match body {
-    Object(members) => {
-      match members.get("method") {
-        Some(String(s)) => assert_true(s == "create_shard_replica")
-        _ => fail("expected method")
-      }
-      match members.get("shard_id") {
-        Some(Number(n, ..)) => assert_true(n == 3.0)
-        _ => fail("expected shard_id")
-      }
-      match members.get("peer_id") {
-        Some(Number(n, ..)) => assert_true(n == 9.0)
-        _ => fail("expected peer_id")
-      }
-      assert_true(members.get("from_peer_id") is None)
-      assert_true(members.get("to_peer_id") is None)
-    }
-    _ => fail("expected an object")
+  assert_true(field(body, "method") is None)
+  let params = match field(body, "drop_replica") {
+    Some(Object(m)) => m
+    _ => fail("expected a drop_replica object")
   }
+  assert_true(
+    @moon-qdrant.int64_of_json(params["shard_id"]) == Some(9007199254740993L),
+  )
+  assert_true(
+    @moon-qdrant.int64_of_json(params["peer_id"]) == Some(9007199254740995L),
+  )
+  match params.get("shard_id") {
+    Some(n) => assert_true(n.stringify() == "9007199254740993")
+    _ => fail("expected shard_id")
+  }
+  assert_true(params.get("from_peer_id") is None)
+  assert_true(params.get("to_peer_id") is None)
 }
 
 ///|
@@ -1497,4 +1542,65 @@ test "nested parser guards reject bad entries inside arrays and maps" {
     "shard_transfers": Json::array([]),
   })
   assert_true(@moon-qdrant.CollectionClusterInfo::from_json(bad_remote) is None)
+}
+
+///|
+test "shard_source_peer picks a peer holding the requested shard" {
+  let layout_json = Json::object({
+    "peer_id": Json::number(1.0),
+    "shard_count": Json::number(2.0),
+    "local_shards": Json::array([
+      Json::object({
+        "shard_id": Json::number(1.0),
+        "points_count": Json::number(0.0),
+        "state": Json::string("Active"),
+      }),
+    ]),
+    "remote_shards": Json::array([
+      Json::object({
+        "shard_id": Json::number(0.0),
+        "peer_id": Json::number(2.0),
+        "state": Json::string("Active"),
+      }),
+    ]),
+    "shard_transfers": Json::array([]),
+  })
+  match @moon-qdrant.CollectionClusterInfo::from_json(layout_json) {
+    Some(layout) => {
+      // remote shard 0 -> its peer, local shard 1 -> the local peer,
+      // unknown shard -> local peer fallback
+      assert_true(@moon-qdrant.shard_source_peer(layout, 0L) == 2L)
+      assert_true(@moon-qdrant.shard_source_peer(layout, 1L) == 1L)
+      assert_true(@moon-qdrant.shard_source_peer(layout, 99L) == 1L)
+    }
+    None => fail("expected a collection cluster layout")
+  }
+}
+
+///|
+test "point struct parses responses that omit vector and payload" {
+  // with_vector=false and with_payload=false make Qdrant drop those keys
+  let id_only : Json = { "id": 1 }
+  match @moon-qdrant.PointStruct::from_json(id_only) {
+    Some(p) => {
+      assert_true(p.id == 1L)
+      assert_true(p.vector.is_empty())
+      assert_true(p.named_vectors is None)
+      match p.payload {
+        Object(_) => ()
+        _ => fail("expected an empty payload object")
+      }
+    }
+    None => fail("expected a point without a vector")
+  }
+  let with_payload : Json = { "id": 2, "payload": { "tag": "alpha" } }
+  match @moon-qdrant.PointStruct::from_json(with_payload) {
+    Some(p) => assert_true(p.id == 2L && p.vector.is_empty())
+    None => fail("expected a point without a vector")
+  }
+  let null_fields : Json = { "id": 3, "vector": null, "payload": null }
+  match @moon-qdrant.PointStruct::from_json(null_fields) {
+    Some(p) => assert_true(p.id == 3L && p.vector.is_empty())
+    None => fail("expected a point with a null vector")
+  }
 }

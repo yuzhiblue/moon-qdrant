@@ -199,7 +199,8 @@ pub fn PointStruct::to_json(self : PointStruct) -> Json {
 /// Parse a point object as returned by the point read endpoint:
 /// `{ "id": 1, "vector": [...] | {"name": [...]}, "payload": {...} }`.
 /// A dense vector array fills `vector`; a named-vector object fills
-/// `named_vectors`.
+/// `named_vectors`. Qdrant omits (or nulls) `vector` and `payload` when
+/// they are not requested, so an id on its own is a valid point.
 pub fn PointStruct::from_json(json : Json) -> PointStruct? {
   guard json is Object(members) else { return None }
   let id = match members.get("id") {
@@ -210,7 +211,11 @@ pub fn PointStruct::from_json(json : Json) -> PointStruct? {
       }
     _ => return None
   }
-  let payload = members.get("payload").unwrap_or(Json::object({}))
+  let payload = match members.get("payload") {
+    Some(Null) => Json::object({})
+    Some(v) => v
+    None => Json::object({})
+  }
   match members.get("vector") {
     Some(Array(arr)) => {
       if arr.is_empty() {
@@ -246,6 +251,8 @@ pub fn PointStruct::from_json(json : Json) -> PointStruct? {
       }
       Some({ id, vector: [], named_vectors: Some(named), payload, })
     }
+    None => Some({ id, vector: [], named_vectors: None, payload, })
+    Some(Null) => Some({ id, vector: [], named_vectors: None, payload, })
     _ => return None
   }
 }

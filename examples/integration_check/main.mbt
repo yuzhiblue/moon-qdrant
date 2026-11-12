@@ -27,7 +27,9 @@ fn check(name : String, cond : Bool) -> Unit {
 async fn main {
   let argv = @env.args()
   let base = if argv.length() > 1 { argv[1] } else { "http://localhost:6333" }
-  let client = @moon_qdrant.QdrantClient::new(base)
+  // Snapshot creation can take >10s on Windows filesystems; leave headroom
+  // so a slow local server is not mistaken for a transport failure.
+  let client = @moon_qdrant.QdrantClient::new(base, timeout_ms=60_000)
 
   // health
   check("health returns ok", client.health())
@@ -93,6 +95,34 @@ async fn main {
   check("scroll_points returns points", scroll.points.length() >= 3)
   let count = client.count_points(collection)
   check("count_points returns 3", count == 3)
+
+  // Qdrant omits "vector" / "payload" when they are not requested; those
+  // points must still parse instead of looking absent.
+  let no_vec = client.retrieve_points(
+    collection,
+    [1L],
+    with_payload=false,
+    with_vector=false,
+  )
+  check(
+    "retrieve_points without vectors parses the point",
+    no_vec.length() == 1 && no_vec[0].id == 1L,
+  )
+  match
+    client.get_point(collection, 1L, with_payload=false, with_vector=false) {
+    Some(p) => check("get_point without vectors parses the point", p.id == 1L)
+    None => check("get_point without vectors parses the point", false)
+  }
+  let no_vec_scroll = client.scroll_points(
+    collection,
+    10,
+    with_payload=false,
+    with_vector=false,
+  )
+  check(
+    "scroll_points without vectors parses points",
+    no_vec_scroll.points.length() >= 3,
+  )
 
   // search: plain, filtered, with score threshold
   let hits = client.search_points(collection, [0.1, 0.2, 0.3, 0.4], 3)
@@ -369,6 +399,45 @@ async fn main {
     "collection cluster has local shards",
     layout.local_shards.length() >= 1,
   )
+
+  // Point ids beyond 2^53: upsert, read, retrieve and delete must all address
+  // exactly the requested id, never the rounded neighbour.
+  let big_collection = "moon-qdrant-integration-check-big-ids"
+  if client.collection_exists(big_collection) {
+    client.delete_collection(big_collection)
+  }
+  client.create_collection(
+    big_collection,
+    @moon_qdrant.CollectionConfig::new(
+      @moon_qdrant.VectorParams::new(4, @moon_qdrant.Distance::Cosine),
+    ),
+  )
+  let big_id = 9007199254740993L
+  let neighbour = 9007199254740992L
+  client.upsert_points(big_collection, [
+    @moon_qdrant.PointStruct::new(neighbour, [0.1, 0.2, 0.3, 0.4], {
+      "kind": "neighbour",
+    }),
+    @moon_qdrant.PointStruct::new(big_id, [0.5, 0.6, 0.7, 0.8], {
+      "kind": "big",
+    }),
+  ])
+  match client.get_point(big_collection, big_id) {
+    Some(p) => check("get_point returns the exact large id", p.id == big_id)
+    None => check("get_point returns the exact large id", false)
+  }
+  let big_retrieved = client.retrieve_points(big_collection, [big_id])
+  check(
+    "retrieve_points returns the exact large id",
+    big_retrieved.length() == 1 && big_retrieved[0].id == big_id,
+  )
+  client.delete_points(big_collection, [big_id])
+  check(
+    "delete_points removes only the exact large id",
+    client.get_point(big_collection, big_id) is None &&
+    client.get_point(big_collection, neighbour) is Some(_),
+  )
+  client.delete_collection(big_collection)
 
   // cleanup
   client.delete_collection(collection)

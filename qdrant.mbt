@@ -389,6 +389,9 @@ pub async fn QdrantClient::upsert_points_batch(
     None => {
       let rows : Array[Json] = []
       for p in points {
+        if p.named_vectors is Some(_) {
+          raise Failure("mixed dense/named points in batch upsert")
+        }
         rows.push(vector_to_json(p.vector))
       }
       Json::array(rows)
@@ -439,6 +442,22 @@ pub async fn QdrantClient::get_point(
 }
 
 ///|
+/// Serialize point ids as a JSON number array without losing precision.
+///
+/// Qdrant point ids are u64 values. Above 2^53 a Double can no longer hold
+/// every integer: `Json::number(id.to_double())` turns 9007199254740993 into
+/// 9007199254740992, so a lookup returns the neighbouring point and a delete
+/// removes it. `int64_to_json` keeps the exact decimal text in the JSON
+/// number's `repr`, which is what the wire serializer emits.
+pub fn point_ids_to_json(ids : Array[Int64]) -> Json {
+  let out : Array[Json] = []
+  for id in ids {
+    out.push(int64_to_json(id))
+  }
+  Json::array(out)
+}
+
+///|
 /// Delete points by id via `POST /collections/{name}/points/delete`.
 /// Pass `wait=false` to return immediately.
 pub async fn QdrantClient::delete_points(
@@ -451,11 +470,7 @@ pub async fn QdrantClient::delete_points(
     url_encode(name) +
     "/points/delete?wait=" +
     wait.to_string()
-  let id_json : Array[Json] = []
-  for id in ids {
-    id_json.push(Json::number(id.to_double()))
-  }
-  let body : Json = { "points": Json::array(id_json) }
+  let body : Json = { "points": point_ids_to_json(ids) }
   let json = self.request_json(Post, path, Some(body))
   ignore(json)
 }
@@ -685,12 +700,8 @@ pub async fn QdrantClient::retrieve_points(
   with_vector~ : Bool = true,
 ) -> Array[PointStruct] {
   let path = "/collections/" + url_encode(name) + "/points"
-  let id_json : Array[Json] = []
-  for id in ids {
-    id_json.push(Json::number(id.to_double()))
-  }
   let body : Json = {
-    "ids": Json::array(id_json),
+    "ids": point_ids_to_json(ids),
     "with_payload": Json::boolean(with_payload),
     "with_vector": Json::boolean(with_vector),
   }
@@ -937,13 +948,7 @@ pub async fn QdrantClient::delete_payload_by_keys(
 fn point_selector_body(ids : Array[Int64]?, filter : Filter?) -> Json {
   let members : Map[String, Json] = Map([])
   match ids {
-    Some(ids_arr) => {
-      let id_json : Array[Json] = []
-      for id in ids_arr {
-        id_json.push(int64_to_json(id))
-      }
-      members["points"] = Json::array(id_json)
-    }
+    Some(ids_arr) => members["points"] = point_ids_to_json(ids_arr)
     None => ()
   }
   match filter {
@@ -964,13 +969,7 @@ fn payload_operation_body(
   let members : Map[String, Json] = Map([])
   members["payload"] = payload
   match ids {
-    Some(ids_arr) => {
-      let id_json : Array[Json] = []
-      for id in ids_arr {
-        id_json.push(int64_to_json(id))
-      }
-      members["points"] = Json::array(id_json)
-    }
+    Some(ids_arr) => members["points"] = point_ids_to_json(ids_arr)
     None => ()
   }
   match filter {
@@ -1362,9 +1361,14 @@ pub async fn QdrantClient::service_info(self : QdrantClient) -> ServiceInfo {
 
 ///|
 /// Build the request body for a collection cluster operation
-/// (`POST /collections/{name}/cluster`). `op` is one of the Qdrant operation
-/// names: `replicate_shard`, `create_shard_replica`, `delete_shard_replica`,
-/// `abort_transfer`, ...
+/// (`POST /collections/{name}/cluster`).
+///
+/// Qdrant's `ClusterOperations` is an untagged enum of single-key objects:
+/// the operation name is the key and its parameters are the value, e.g.
+/// `{"replicate_shard": {"shard_id": 0, "from_peer_id": 1, "to_peer_id": 2}}`.
+/// A flat `{"method": "replicate_shard", ...}` body matches no variant and is
+/// rejected with HTTP 400. `op` must be a real Qdrant operation name such as
+/// `replicate_shard`, `move_shard`, `drop_replica` or `abort_transfer`.
 pub fn collection_cluster_op_body(
   op : String,
   shard_id : Int64,
@@ -1372,21 +1376,22 @@ pub fn collection_cluster_op_body(
   from_peer_id~ : Int64? = None,
   to_peer_id~ : Int64? = None,
 ) -> Json {
-  let members : Map[String, Json] = Map([])
-  members["method"] = Json::string(op)
-  members["shard_id"] = int64_to_json(shard_id)
+  let params : Map[String, Json] = Map([])
+  params["shard_id"] = int64_to_json(shard_id)
   match peer_id {
-    Some(v) => members["peer_id"] = int64_to_json(v)
+    Some(v) => params["peer_id"] = int64_to_json(v)
     None => ()
   }
   match from_peer_id {
-    Some(v) => members["from_peer_id"] = int64_to_json(v)
+    Some(v) => params["from_peer_id"] = int64_to_json(v)
     None => ()
   }
   match to_peer_id {
-    Some(v) => members["to_peer_id"] = int64_to_json(v)
+    Some(v) => params["to_peer_id"] = int64_to_json(v)
     None => ()
   }
+  let members : Map[String, Json] = Map([])
+  members[op] = Json::object(params)
   Json::object(members)
 }
 
@@ -1451,7 +1456,7 @@ async fn QdrantClient::cluster_op(
 
 ///|
 /// Replicate a shard to another peer via
-/// `POST /collections/{name}/cluster` with method `replicate_shard`.
+/// `POST /collections/{name}/cluster` with the `replicate_shard` operation.
 pub async fn QdrantClient::replicate_shard(
   self : QdrantClient,
   name : String,
@@ -1471,27 +1476,59 @@ pub async fn QdrantClient::replicate_shard(
 }
 
 ///|
-/// Create a new shard replica on a peer via
-/// `POST /collections/{name}/cluster` with method `create_shard_replica`.
+/// Pick a peer that already holds `shard_id` as the replication source.
+/// `local_shards` belong to `layout.peer_id`; remote entries carry their own
+/// peer id. Falls back to the local peer when the shard is not listed.
+pub fn shard_source_peer(
+  layout : CollectionClusterInfo,
+  shard_id : Int64,
+) -> Int64 {
+  for shard in layout.remote_shards {
+    if shard.shard_id == shard_id {
+      return shard.peer_id
+    }
+  }
+  for shard in layout.local_shards {
+    if shard.shard_id == shard_id {
+      return layout.peer_id
+    }
+  }
+  layout.peer_id
+}
+
+///|
+/// Add a replica of a shard on `peer_id`.
+///
+/// Qdrant has no `create_shard_replica` cluster operation: a replica is added
+/// with `replicate_shard`, which needs a source peer that holds the shard.
+/// When `from_peer_id~` is omitted the client looks one up through
+/// `GET /collections/{name}/cluster`; pass it explicitly to skip the lookup.
 pub async fn QdrantClient::create_shard_replica(
   self : QdrantClient,
   name : String,
   shard_id : Int64,
   peer_id : Int64,
+  from_peer_id~ : Int64? = None,
 ) -> Bool {
+  let source = match from_peer_id {
+    Some(v) => v
+    None => shard_source_peer(self.collection_cluster_info(name), shard_id)
+  }
   self.cluster_op(
     name,
     collection_cluster_op_body(
-      "create_shard_replica",
+      "replicate_shard",
       shard_id,
-      peer_id=Some(peer_id),
+      from_peer_id=Some(source),
+      to_peer_id=Some(peer_id),
     ),
   )
 }
 
 ///|
-/// Delete a shard replica from a peer via
-/// `POST /collections/{name}/cluster` with method `delete_shard_replica`.
+/// Drop a shard replica from `peer_id` via the `drop_replica` operation.
+/// `delete_shard_replica` is kept as the public method name, but Qdrant's
+/// cluster operation is called `drop_replica`.
 pub async fn QdrantClient::delete_shard_replica(
   self : QdrantClient,
   name : String,
@@ -1500,10 +1537,6 @@ pub async fn QdrantClient::delete_shard_replica(
 ) -> Bool {
   self.cluster_op(
     name,
-    collection_cluster_op_body(
-      "delete_shard_replica",
-      shard_id,
-      peer_id=Some(peer_id),
-    ),
+    collection_cluster_op_body("drop_replica", shard_id, peer_id=Some(peer_id)),
   )
 }

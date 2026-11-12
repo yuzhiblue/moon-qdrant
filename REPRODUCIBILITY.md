@@ -18,7 +18,7 @@ docker run -p 6333:6333 qdrant/qdrant
 # 3. Run the end-to-end demo against it
 moon run examples/demo -- http://localhost:6333
 
-# 4. (Optional) Re-run the full integration check — 30 assertions
+# 4. (Optional) Re-run the full integration check
 moon run examples/integration_check -- http://localhost:6333
 ```
 
@@ -45,12 +45,12 @@ cd moon-qdrant
 moon install
 ```
 
-`moon check --deny-warn` and `moon test` (63 unit tests) should pass
+`moon check --deny-warn` and `moon test` (75 unit tests) should pass
 immediately, without any server:
 
 ```bash
 moon check --deny-warn   # clean
-moon test                # Total tests: 63, passed: 63
+moon test                # Total tests: 74, passed: 74
 ```
 
 ### 2. Start Qdrant
@@ -98,7 +98,7 @@ demo finished
 
 ### 4. Re-run the integration check (optional)
 
-The same 30-assertion check that CI runs against a live server:
+The same check that CI runs against a live server:
 
 ```bash
 moon run examples/integration_check -- http://localhost:6333
@@ -116,8 +116,8 @@ The repository ships two GitHub Actions workflows that run on every push:
 
 | Workflow | What it does | Status |
 |---|---|---|
-| `Check and Test` | `moon check --deny-warn` + 63 unit tests on ubuntu / macOS / Windows | [![Check and Test](https://github.com/yuzhiblue/moon-qdrant/actions/workflows/check.yml/badge.svg)](https://github.com/yuzhiblue/moon-qdrant/actions/workflows/check.yml) |
-| `Integration (real Qdrant)` | starts `qdrant/qdrant:v1.15.5`, runs the 30-assertion `integration_check`, then the demo end to end | [![Integration (real Qdrant)](https://github.com/yuzhiblue/moon-qdrant/actions/workflows/integration.yml/badge.svg)](https://github.com/yuzhiblue/moon-qdrant/actions/workflows/integration.yml) |
+| `Check and Test` | `moon check --deny-warn` + 75 unit tests on ubuntu / macOS / Windows | [![Check and Test](https://github.com/yuzhiblue/moon-qdrant/actions/workflows/check.yml/badge.svg)](https://github.com/yuzhiblue/moon-qdrant/actions/workflows/check.yml) |
+| `Integration (real Qdrant)` | starts `qdrant/qdrant:v1.15.5`, runs the `integration_check`, then the demo end to end | [![Integration (real Qdrant)](https://github.com/yuzhiblue/moon-qdrant/actions/workflows/integration.yml/badge.svg)](https://github.com/yuzhiblue/moon-qdrant/actions/workflows/integration.yml) |
 
 Both are green on `main`. The integration workflow is what caught and fixed
 16 real bugs (wrong endpoint paths such as `/points/facet` → `/facet`,

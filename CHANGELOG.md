@@ -4,6 +4,67 @@ All notable changes to moon-qdrant are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.5.1] - 2026-11-12
+
+### Fixed
+
+- **Point ids above 2^53 are no longer rounded on the wire**:
+  `delete_points` and `retrieve_points` built their id arrays with
+  `Json::number(id.to_double())`, which turns `9007199254740993` into
+  `9007199254740992` — a read returned the neighbouring point and a delete
+  removed it. Both now use the new `point_ids_to_json` helper (shared with the
+  payload selectors), which keeps the exact decimal text via `int64_to_json`.
+  Response decoding is pinned by a test that parses a real
+  `{"id":9007199254740993,...}` payload.
+- **Collection cluster / shard operations no longer get HTTP 400**: Qdrant's
+  `ClusterOperations` is an untagged enum of single-key objects, e.g.
+  `{"replicate_shard":{"shard_id":0,"from_peer_id":1,"to_peer_id":2}}`. The
+  client sent a flat `{"method":"replicate_shard", ...}` body, which matches
+  no variant. `collection_cluster_op_body` now emits the required wrapping.
+  `create_shard_replica` / `delete_shard_replica` were also not real Qdrant
+  operation names; they now map to `replicate_shard` and `drop_replica`.
+  `create_shard_replica` accepts an optional `from_peer_id~`; when it is
+  omitted the new `shard_source_peer` helper looks up a peer holding the
+  shard. The previous `0` default made Qdrant answer
+  `400 Peer 0 does not exist` on real clusters. On a single node Qdrant
+  still answers cluster operations with `400 Distributed mode disabled`;
+  that is a server-side limit, not the malformed-body 400 above.
+- **Integration check no longer times out on slow filesystems**: creating a
+  collection snapshot took >10s against a local Windows Qdrant while the
+  client default was 10s, so a successful 200 was reported as a transport
+  error. The check now uses a 60s timeout.
+- **Reads with `with_vector=false` / `with_payload=false` no longer look like
+  missing points**: Qdrant omits those keys, but `PointStruct::from_json`
+  required `vector` and returned None, so `get_point` reported a 404 and
+  `retrieve_points` / `scroll_points` raised on perfectly valid results.
+  Missing or null `vector` / `payload` now parse as an empty vector / empty
+  payload object. Verified against a live Qdrant.
+- **Batch upsert rejects dense/named mixes in both orders**: the check only
+  ran when the first point had named vectors; a dense-first batch silently
+  emitted zero-dimensional vectors for its named points.
+
+### Added
+
+- `point_ids_to_json` and `shard_source_peer` public helpers; unit tests for large-id wire text,
+  response decoding and cluster op bodies; a real-Qdrant integration check
+  that upserts / reads / retrieves / deletes id `9007199254740993` next to
+  its neighbour `9007199254740992`.
+
+### Known limitations
+
+- Counting fields (`count_points`, `CollectionInfo.points_count`,
+  `SnapshotInfo.size`, `FacetHit.count`) are `Int32` and saturate above
+  2^31-1, while Qdrant reports them as u64. Fixing this needs a breaking
+  change to `Int64`.
+- Qdrant peer ids are random u64 values; ids above `Int64::max` wrap during
+  parsing because the client models them as `Int64`.
+- `url_encode` covers BMP characters only; collection names containing
+  supplementary-plane characters (emoji) are percent-encoded incorrectly.
+- `collection_info().vectors` is `None` for named-vector collections; the
+  per-name vector config is not surfaced.
+- `list_payload_indexes()` puts the field name into `field_schema`; the
+  real index descriptor is dropped.
+
 ## [0.5.0] - 2026-10-13
 
 ### Breaking
