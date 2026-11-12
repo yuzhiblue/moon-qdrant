@@ -37,6 +37,14 @@ jobs:
           # migrate those manifests with `moon fmt` (the officially
           # suggested migration path), then the next build succeeds.
           for i in 1 2 3 4 5; do
+            if [ -d .mooncakes/bikallem/compress ]; then
+              # moonc >= 0.10.20 removed `try?`, which compress 0.3.4
+              # sources still use; overwrite them with fixed copies kept in
+              # scripts/compress-patch (see that directory's README).
+              for rel in zstd/dictionary.mbt zstd/inflater.mbt bzip2/inflater.mbt snappy/inflater.mbt lz4/inflater.mbt; do
+                cp "scripts/compress-patch/$rel" ".mooncakes/bikallem/compress/$rel"
+              done
+            fi
             moon build --target native && break
             if ! find .mooncakes -name moon.mod.json 2>/dev/null | grep -q .; then
               echo "no more legacy manifests; the failing build is real"
