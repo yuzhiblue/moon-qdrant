@@ -176,6 +176,13 @@ async fn main {
   client.create_payload_index(collection, "tag", "keyword")
   let facet = client.facet_points(collection, "tag", 10)
   check("facet returns 2 distinct tags", facet.hits.length() == 2)
+  let mut facet_count_ok = false
+  for hit in facet.hits {
+    if hit.count == 2L {
+      facet_count_ok = true
+    }
+  }
+  check("facet hit count is exact", facet_count_ok)
 
   // grouped search (group_by also needs a keyword index on the key)
   let groups = client.search_points_groups(
@@ -203,6 +210,12 @@ async fn main {
     named_collection,
     @moon_qdrant.CollectionConfig::new_named(named_vecs),
   )
+  // collection_info surfaces the per-name vector configs
+  let nv_info = client.collection_info(named_collection)
+  match nv_info.named_vectors {
+    Some(map) => check("named vectors config surfaced", map.length() == 2)
+    None => check("named vectors config surfaced", false)
+  }
   let nv_points : Map[String, Array[Double]] = Map([])
   nv_points["text"] = [0.1, 0.2, 0.3, 0.4]
   nv_points["image"] = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0]
@@ -363,6 +376,18 @@ async fn main {
   // payload index (created earlier for facet/group; verify and clean up)
   let indexes = client.list_payload_indexes(collection)
   check("payload index listed", indexes.length() >= 1)
+  let mut index_fields_ok = indexes.length() == 0
+  for index in indexes {
+    if index.field_name == "tag" && index.data_type == "keyword" {
+      index_fields_ok = true
+      match index.field_schema {
+        Some(Object(m)) =>
+          check("payload index descriptor carries points", m.contains("points"))
+        _ => check("payload index descriptor carries points", false)
+      }
+    }
+  }
+  check("payload index field surfaced", index_fields_ok)
   client.delete_payload_index(collection, "tag")
 
   // snapshots

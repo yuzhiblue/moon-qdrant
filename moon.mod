@@ -11,7 +11,7 @@
 
 name = "yuzhiblue/moon-qdrant"
 
-version = "0.6.0"
+version = "0.7.0"
 
 readme = "README.md"
 
@@ -28,7 +28,6 @@ supported_targets = "+native"
 description = "A MoonBit client for the Qdrant vector database REST API."
 
 import {
-  "gaato/mttp@0.2.0",
-  "gaato/mttp_async@0.1.0",
+  "gaato/mttp@0.3.0",
   "moonbitlang/async@0.22.9",
 }

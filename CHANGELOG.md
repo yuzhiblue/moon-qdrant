@@ -4,6 +4,48 @@ All notable changes to moon-qdrant are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.7.0] - 2026-11-12
+
+### Breaking
+
+- **Counting fields are now `Int64`** (Qdrant reports them as u64):
+  `count_points`, `CollectionInfo.points_count`, `SnapshotInfo.size` and
+  `FacetHit.count`. Counts above 2^31-1 no longer saturate.
+- **Peer ids are now decimal `String`s.** Qdrant peer ids are random u64
+  values and roughly half of them exceed `Int64::max`, where the previous
+  `Int64` representation wrapped silently. `ClusterInfo.peer_id`,
+  `RaftInfo.leader`, `CollectionClusterInfo.peer_id`,
+  `RemoteShardInfo.peer_id`, `ShardTransferInfo.from` / `.to` and the peer
+  arguments of `replicate_shard` / `create_shard_replica` /
+  `delete_shard_replica` / `collection_cluster_op_body` now carry the exact
+  decimal text; request bodies serialize it back as an exact JSON number
+  (`peer_id_to_json`), so ids beyond 2^63 round-trip losslessly. New
+  `u64_text_of_json` helper.
+- **`PayloadIndexInfo` now surfaces the real index descriptor**: new
+  `field_name` (previously smuggled into `field_schema`) and `points_count`
+  fields; `field_schema` is now the descriptor object exactly as Qdrant
+  reports it (including `data_type`, `points` and index `params`) instead of
+  the field name string.
+
+### Changed
+
+- Dependencies follow gaato's rename: `gaato/mttp_async@0.1.0` +
+  `gaato/mttp@0.2.0` → `gaato/mttp@0.3.0` (the 0.2 modules are deprecated;
+  0.3.0 keeps the same API shape under one module).
+
+### Fixed
+
+- **`url_encode` supports supplementary-plane characters**: emoji and other
+  astral characters arrive as UTF-16 surrogate pairs and were previously
+  percent-encoded as two broken 3-byte sequences; they are now combined into
+  their full code point and encoded as 4-byte UTF-8.
+- **`collection_info` surfaces named-vector configs**: for named-vector
+  collections `CollectionInfo.named_vectors` maps each vector name to its
+  `VectorParams` (previously `vectors` was `None` and the per-name config was
+  dropped). Dense collections keep using `vectors`.
+- The demo uses a 60s timeout so snapshot creation on slow filesystems is
+  not mistaken for a transport failure.
+
 ## [0.6.0] - 2026-11-12
 
 ### Changed

@@ -8,7 +8,9 @@
 async fn main {
   let argv = @env.args()
   let base = if argv.length() > 1 { argv[1] } else { "http://localhost:6333" }
-  let client = @moon_qdrant.QdrantClient::new(base)
+  // Snapshot creation can take >10s on slow filesystems; leave headroom so
+  // a slow local server is not mistaken for a transport failure.
+  let client = @moon_qdrant.QdrantClient::new(base, timeout_ms=60_000)
   let collection = "moon-qdrant-demo"
 
   let healthy = client.health() catch { _ => false }

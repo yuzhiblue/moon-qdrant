@@ -2,12 +2,12 @@
 package "yuzhiblue/moon-qdrant"
 
 import {
-  "gaato/mttp/client",
+  "gaato/mttp_core/client",
   "moonbitlang/core/json",
 }
 
 // Values
-pub fn collection_cluster_op_body(String, Int64, peer_id? : Int64?, from_peer_id? : Int64?, to_peer_id? : Int64?) -> @json.Json
+pub fn collection_cluster_op_body(String, Int64, peer_id? : String?, from_peer_id? : String?, to_peer_id? : String?) -> @json.Json
 
 pub fn count_request_body(Filter?, Bool) -> @json.Json
 
@@ -19,7 +19,7 @@ pub fn join_url(String, String) -> String
 
 pub fn parse_aliases(@json.Json) -> Array[AliasInfo]?
 
-pub fn parse_count_result(@json.Json) -> Int32?
+pub fn parse_count_result(@json.Json) -> Int64?
 
 pub fn parse_int64(String) -> Int64?
 
@@ -39,11 +39,15 @@ pub fn parse_search_result(@json.Json) -> Array[ScoredPoint]?
 
 pub fn parse_snapshots(@json.Json) -> Array[SnapshotInfo]?
 
+pub fn peer_id_to_json(String) -> @json.Json
+
 pub fn point_ids_to_json(Array[Int64]) -> @json.Json
 
 pub fn scroll_request_body(Int32, Filter?, Int64?, Bool, Bool) -> @json.Json
 
-pub fn shard_source_peer(CollectionClusterInfo, Int64) -> Int64
+pub fn shard_source_peer(CollectionClusterInfo, Int64) -> String
+
+pub fn u64_text_of_json(@json.Json) -> String?
 
 pub fn url_encode(String) -> String
 
@@ -60,14 +64,14 @@ pub fn AliasInfo::from_json(@json.Json) -> Self?
 
 pub struct ClusterInfo {
   status : String
-  peer_id : Int64
+  peer_id : String
   peers : Map[String, PeerInfo]
   raft_info : RaftInfo?
 }
 pub fn ClusterInfo::from_json(@json.Json) -> Self?
 
 pub struct CollectionClusterInfo {
-  peer_id : Int64
+  peer_id : String
   shard_count : Int64
   local_shards : Array[LocalShardInfo]
   remote_shards : Array[RemoteShardInfo]
@@ -85,8 +89,9 @@ pub fn CollectionConfig::to_json(Self) -> @json.Json
 
 pub struct CollectionInfo {
   status : String
-  points_count : Int32?
+  points_count : Int64?
   vectors : VectorParams?
+  named_vectors : Map[String, VectorParams]?
 }
 pub fn CollectionInfo::from_json(@json.Json) -> Self?
 
@@ -141,7 +146,7 @@ pub fn Distance::to_wire(Self) -> String
 
 pub struct FacetHit {
   value : @json.Json
-  count : Int32
+  count : Int64
 }
 pub fn FacetHit::from_json(@json.Json) -> Self?
 
@@ -177,7 +182,9 @@ pub fn NamedVector::new(String, Array[Double]) -> Self
 pub fn NamedVector::to_json(Self) -> @json.Json
 
 pub struct PayloadIndexInfo {
+  field_name : String
   data_type : String
+  points_count : Int64?
   field_schema : @json.Json?
 }
 pub fn PayloadIndexInfo::from_json(@json.Json) -> Self?
@@ -212,11 +219,11 @@ pub async fn QdrantClient::cluster_info(Self) -> ClusterInfo
 pub async fn QdrantClient::collection_cluster_info(Self, String) -> CollectionClusterInfo
 pub async fn QdrantClient::collection_exists(Self, String) -> Bool
 pub async fn QdrantClient::collection_info(Self, String) -> CollectionInfo
-pub async fn QdrantClient::count_points(Self, String, filter? : Filter?, exact? : Bool) -> Int32
+pub async fn QdrantClient::count_points(Self, String, filter? : Filter?, exact? : Bool) -> Int64
 pub async fn QdrantClient::create_alias(Self, String, String) -> Unit
 pub async fn QdrantClient::create_collection(Self, String, CollectionConfig) -> Unit
 pub async fn QdrantClient::create_payload_index(Self, String, String, String, wait? : Bool) -> Unit
-pub async fn QdrantClient::create_shard_replica(Self, String, Int64, Int64, from_peer_id? : Int64?) -> Bool
+pub async fn QdrantClient::create_shard_replica(Self, String, Int64, String, from_peer_id? : String?) -> Bool
 pub async fn QdrantClient::create_snapshot(Self, String, wait? : Bool) -> SnapshotInfo
 pub async fn QdrantClient::delete_alias(Self, String) -> Unit
 pub async fn QdrantClient::delete_collection(Self, String) -> Unit
@@ -225,7 +232,7 @@ pub async fn QdrantClient::delete_payload_by_keys(Self, String, Array[String], i
 pub async fn QdrantClient::delete_payload_index(Self, String, String, wait? : Bool) -> Unit
 pub async fn QdrantClient::delete_points(Self, String, Array[Int64], wait? : Bool) -> Unit
 pub async fn QdrantClient::delete_points_by_filter(Self, String, Filter, wait? : Bool) -> Unit
-pub async fn QdrantClient::delete_shard_replica(Self, String, Int64, Int64) -> Bool
+pub async fn QdrantClient::delete_shard_replica(Self, String, Int64, String) -> Bool
 pub async fn QdrantClient::delete_snapshot(Self, String, String, wait? : Bool) -> Unit
 pub async fn QdrantClient::facet_points(Self, String, String, Int32, filter? : Filter?, exact? : Bool) -> FacetResult
 pub async fn QdrantClient::get_locks(Self) -> CollectionLock
@@ -240,7 +247,7 @@ pub async fn QdrantClient::overwrite_payload(Self, String, @json.Json, ids? : Ar
 pub async fn QdrantClient::query_nearest(Self, String, Array[Double], Int32, filter? : Filter?, using_vector? : String?, score_threshold? : Double?, with_payload? : Bool, with_vector? : Bool) -> Array[ScoredPoint]
 pub async fn QdrantClient::query_points(Self, String, @json.Json, Int32, filter? : Filter?, using_vector? : String?, score_threshold? : Double?, with_payload? : Bool, with_vector? : Bool) -> Array[ScoredPoint]
 pub async fn QdrantClient::query_recommend(Self, String, Array[@json.Json], negative? : Array[@json.Json]?, Int32, filter? : Filter?, using_vector? : String?, score_threshold? : Double?, with_payload? : Bool, with_vector? : Bool) -> Array[ScoredPoint]
-pub async fn QdrantClient::replicate_shard(Self, String, Int64, Int64, Int64) -> Bool
+pub async fn QdrantClient::replicate_shard(Self, String, Int64, String, String) -> Bool
 pub async fn QdrantClient::retrieve_points(Self, String, Array[Int64], with_payload? : Bool, with_vector? : Bool) -> Array[PointStruct]
 pub async fn QdrantClient::scroll_points(Self, String, Int32, filter? : Filter?, offset? : Int64?, with_payload? : Bool, with_vector? : Bool) -> ScrollResult
 pub async fn QdrantClient::search_points(Self, String, Array[Double], Int32, filter? : @json.Json?, with_payload? : Bool, with_vector? : Bool, score_threshold? : Double?, offset? : Int64?, using_vector? : String?, search_params? : SearchParams?) -> Array[ScoredPoint]
@@ -261,7 +268,7 @@ pub struct RaftInfo {
   term : Int64?
   commit : Int64?
   pending_operations : Int64?
-  leader : Int64?
+  leader : String?
   role : String?
   is_voter : Bool?
 }
@@ -269,7 +276,7 @@ pub fn RaftInfo::from_json(@json.Json) -> Self?
 
 pub struct RemoteShardInfo {
   shard_id : Int64
-  peer_id : Int64
+  peer_id : String
   state : String
 }
 pub fn RemoteShardInfo::from_json(@json.Json) -> Self?
@@ -308,8 +315,8 @@ pub fn ServiceInfo::from_json(@json.Json) -> Self?
 
 pub struct ShardTransferInfo {
   shard_id : Int64
-  from : Int64
-  to : Int64
+  from : String
+  to : String
   method_name : String?
 }
 pub fn ShardTransferInfo::from_json(@json.Json) -> Self?
@@ -317,7 +324,7 @@ pub fn ShardTransferInfo::from_json(@json.Json) -> Self?
 pub struct SnapshotInfo {
   name : String
   creation_time : String?
-  size : Int32?
+  size : Int64?
 }
 pub fn SnapshotInfo::from_json(@json.Json) -> Self?
 

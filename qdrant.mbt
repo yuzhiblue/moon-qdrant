@@ -34,7 +34,7 @@ fn Method::to_string(self : Method) -> String {
 pub struct QdrantClient {
   base_url : String
   api_key : String?
-  http : @client.Client
+  http : @mttp.Client
 }
 
 ///|
@@ -59,7 +59,7 @@ pub fn QdrantClient::new(
     base_url
   }
   let total = timeout_ms * 12
-  let http = @mttp_async.client(
+  let http = @mttp.client(
     base_url=base,
     timeout_ms~,
     total_ms=if total > 120_000 { total } else { 120_000 },
@@ -87,15 +87,41 @@ pub fn join_url(base : String, path : String) -> String {
 /// Percent-encode a path segment for use in a Qdrant URL. Qdrant accepts a
 /// broad character set in collection, field and snapshot names (not just
 /// ASCII alphanumerics), so unreserved characters pass through and everything
-/// else is percent-encoded.
+/// else is percent-encoded. Supplementary-plane characters (emoji and friends)
+/// arrive as UTF-16 surrogate pairs and are combined into their full code
+/// point, then encoded as 4-byte UTF-8.
 pub fn url_encode(input : String) -> String {
   let mut out = ""
-  for i in 0..<input.length() {
+  let n = input.length()
+  let mut i = 0
+  while i < n {
     let unit = input[i]
     if is_unreserved(unit) {
       out = out + Int32::unsafe_to_char(unit.to_int()).to_string()
+      i = i + 1
+    } else if unit >= 0xD800 && unit <= 0xDBFF {
+      // High surrogate: combine with a following low surrogate into the
+      // full supplementary-plane code point.
+      let cp = if i + 1 < n {
+        let lo = input[i + 1]
+        if lo >= 0xDC00 && lo <= 0xDFFF {
+          0x10000 + ((unit.to_int() - 0xD800) << 10) + (lo.to_int() - 0xDC00)
+        } else {
+          unit.to_int()
+        }
+      } else {
+        unit.to_int()
+      }
+      out = out + encode_codepoint(cp)
+      if cp >= 0x10000 {
+        i = i + 2
+      } else {
+        i = i + 1
+      }
     } else {
-      out = out + encode_char(unit)
+      // Lone low surrogate or a regular BMP character.
+      out = out + encode_codepoint(unit.to_int())
+      i = i + 1
     }
   }
   out
@@ -117,13 +143,11 @@ fn is_unreserved(c : UInt16) -> Bool {
 }
 
 ///|
-/// Percent-encode one UTF-8 character as `%XX` per byte. The input is a
-/// UTF-16 code unit from `s[i]`; ASCII passes through as one byte, BMP
-/// characters are encoded as 2-3 UTF-8 bytes. (Supplementary-plane
-/// characters arrive as surrogate pairs and are out of scope for path
-/// segments.)
-fn encode_char(c : UInt16) -> String {
-  let cp = c.to_int()
+/// Percent-encode one Unicode code point as `%XX` per UTF-8 byte:
+/// 1 byte for ASCII, 2 bytes up to U+07FF, 3 bytes up to U+FFFF and 4 bytes
+/// for supplementary-plane code points. (A lone surrogate is encoded as if
+/// it were a code point — best effort for malformed input.)
+fn encode_codepoint(cp : Int32) -> String {
   if cp < 0x80 {
     "%" + hex_digit(cp / 16) + hex_digit(cp % 16)
   } else if cp < 0x800 {
@@ -135,7 +159,7 @@ fn encode_char(c : UInt16) -> String {
     "%" +
     hex_digit(b2 / 16) +
     hex_digit(b2 % 16)
-  } else {
+  } else if cp < 0x10000 {
     let b1 = 0xE0 | (cp >> 12)
     let b2 = 0x80 | ((cp >> 6) & 0x3F)
     let b3 = 0x80 | (cp & 0x3F)
@@ -148,6 +172,23 @@ fn encode_char(c : UInt16) -> String {
     "%" +
     hex_digit(b3 / 16) +
     hex_digit(b3 % 16)
+  } else {
+    let b1 = 0xF0 | (cp >> 18)
+    let b2 = 0x80 | ((cp >> 12) & 0x3F)
+    let b3 = 0x80 | ((cp >> 6) & 0x3F)
+    let b4 = 0x80 | (cp & 0x3F)
+    "%" +
+    hex_digit(b1 / 16) +
+    hex_digit(b1 % 16) +
+    "%" +
+    hex_digit(b2 / 16) +
+    hex_digit(b2 % 16) +
+    "%" +
+    hex_digit(b3 / 16) +
+    hex_digit(b3 % 16) +
+    "%" +
+    hex_digit(b4 / 16) +
+    hex_digit(b4 % 16)
   }
 }
 
@@ -189,8 +230,8 @@ async fn QdrantClient::send_raw(
   }
   // `any_status` keeps non-2xx responses as values: Qdrant reports errors
   // (404, 400, ...) with a JSON body that callers parse, not as failures.
-  let reply = @mttp_async.request(request)
-    .response(@mttp_async.as_string().any_status())
+  let reply = @mttp.request(request)
+    .response(@mttp.as_string().any_status())
     .send(self.http) catch {
       error =>
         raise Failure(
@@ -720,7 +761,7 @@ pub async fn QdrantClient::count_points(
   name : String,
   filter~ : Filter? = None,
   exact~ : Bool = false,
-) -> Int32 {
+) -> Int64 {
   let path = "/collections/" + url_encode(name) + "/points/count"
   let body = count_request_body(filter, exact)
   let json = self.request_json(Post, path, Some(body))
@@ -1417,25 +1458,26 @@ pub async fn QdrantClient::service_info(self : QdrantClient) -> ServiceInfo {
 /// A flat `{"method": "replicate_shard", ...}` body matches no variant and is
 /// rejected with HTTP 400. `op` must be a real Qdrant operation name such as
 /// `replicate_shard`, `move_shard`, `drop_replica` or `abort_transfer`.
+/// Peer ids are exact decimal texts of Qdrant's u64 values.
 pub fn collection_cluster_op_body(
   op : String,
   shard_id : Int64,
-  peer_id~ : Int64? = None,
-  from_peer_id~ : Int64? = None,
-  to_peer_id~ : Int64? = None,
+  peer_id~ : String? = None,
+  from_peer_id~ : String? = None,
+  to_peer_id~ : String? = None,
 ) -> Json {
   let params : Map[String, Json] = Map([])
   params["shard_id"] = int64_to_json(shard_id)
   match peer_id {
-    Some(v) => params["peer_id"] = int64_to_json(v)
+    Some(v) => params["peer_id"] = peer_id_to_json(v)
     None => ()
   }
   match from_peer_id {
-    Some(v) => params["from_peer_id"] = int64_to_json(v)
+    Some(v) => params["from_peer_id"] = peer_id_to_json(v)
     None => ()
   }
   match to_peer_id {
-    Some(v) => params["to_peer_id"] = int64_to_json(v)
+    Some(v) => params["to_peer_id"] = peer_id_to_json(v)
     None => ()
   }
   let members : Map[String, Json] = Map([])
@@ -1505,12 +1547,13 @@ async fn QdrantClient::cluster_op(
 ///|
 /// Replicate a shard to another peer via
 /// `POST /collections/{name}/cluster` with the `replicate_shard` operation.
+/// Peer ids are exact decimal texts of Qdrant's u64 values.
 pub async fn QdrantClient::replicate_shard(
   self : QdrantClient,
   name : String,
   shard_id : Int64,
-  from_peer_id : Int64,
-  to_peer_id : Int64,
+  from_peer_id : String,
+  to_peer_id : String,
 ) -> Bool {
   self.cluster_op(
     name,
@@ -1530,7 +1573,7 @@ pub async fn QdrantClient::replicate_shard(
 pub fn shard_source_peer(
   layout : CollectionClusterInfo,
   shard_id : Int64,
-) -> Int64 {
+) -> String {
   for shard in layout.remote_shards {
     if shard.shard_id == shard_id {
       return shard.peer_id
@@ -1555,8 +1598,8 @@ pub async fn QdrantClient::create_shard_replica(
   self : QdrantClient,
   name : String,
   shard_id : Int64,
-  peer_id : Int64,
-  from_peer_id~ : Int64? = None,
+  peer_id : String,
+  from_peer_id~ : String? = None,
 ) -> Bool {
   let source = match from_peer_id {
     Some(v) => v
@@ -1581,7 +1624,7 @@ pub async fn QdrantClient::delete_shard_replica(
   self : QdrantClient,
   name : String,
   shard_id : Int64,
-  peer_id : Int64,
+  peer_id : String,
 ) -> Bool {
   self.cluster_op(
     name,

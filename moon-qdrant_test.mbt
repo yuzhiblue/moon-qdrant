@@ -200,6 +200,51 @@ test "collection info tolerates a missing points count" {
 }
 
 ///|
+test "collection info parses named vector configs and exact counts" {
+  // A named-vector collection reports vectors as {name: {size, distance}}.
+  // points_count is u64 on the wire and can exceed Int32.
+  let json : Json = {
+    "result": {
+      "status": "green",
+      "points_count": 5000000000,
+      "config": {
+        "params": {
+          "vectors": {
+            "text": { "size": 4, "distance": "Cosine" },
+            "image": { "size": 8, "distance": "Dot" },
+          },
+        },
+      },
+    },
+    "status": "ok",
+  }
+  match @moon-qdrant.CollectionInfo::from_json(json) {
+    Some(info) => {
+      match info.points_count {
+        Some(n) => assert_true(n == 5000000000L)
+        None => fail("expected points count")
+      }
+      assert_true(info.vectors is None)
+      match info.named_vectors {
+        Some(map) => {
+          assert_true(map.length() == 2)
+          match map.get("text") {
+            Some(vp) => assert_true(vp.size == 4)
+            None => fail("expected text vector config")
+          }
+          match map.get("image") {
+            Some(vp) => assert_true(vp.distance.to_wire() == "Dot")
+            None => fail("expected image vector config")
+          }
+        }
+        None => fail("expected named vectors config")
+      }
+    }
+    None => fail("expected collection info")
+  }
+}
+
+///|
 test "point struct parses the point read response" {
   let json : Json = {
     "id": 7,
@@ -805,6 +850,16 @@ test "url_encode percent-encodes reserved characters" {
 }
 
 ///|
+test "url_encode combines surrogate pairs into 4-byte UTF-8" {
+  // U+1F44D thumbs-up arrives as the surrogate pair D83D DC4D and must be
+  // encoded as its full code point (F0 9F 91 8D), not as two broken
+  // 3-byte encodings of the surrogates.
+  assert_eq("%F0%9F%91%8D", @moon-qdrant.url_encode("👍"))
+  // Mixed BMP and supplementary-plane characters.
+  assert_eq("col%F0%9F%91%8D%E4%B8%AD", @moon-qdrant.url_encode("col👍中"))
+}
+
+///|
 test "snapshot info parses a snapshot entry" {
   let json : Json = {
     "name": "snap-1",
@@ -872,7 +927,18 @@ test "payload index list parses the collection-info response" {
   match @moon-qdrant.parse_payload_indexes(json) {
     Some(indexes) => {
       assert_true(indexes.length() == 2)
+      // The field name, the descriptor and the point count are all surfaced.
+      assert_true(indexes[0].field_name == "tag")
       assert_true(indexes[0].data_type == "keyword")
+      match indexes[0].points_count {
+        Some(n) => assert_true(n == 3L)
+        None => fail("expected points count")
+      }
+      match indexes[0].field_schema {
+        Some(Object(m)) => assert_true(m.contains("data_type"))
+        _ => fail("expected field schema descriptor")
+      }
+      assert_true(indexes[1].field_name == "price")
       assert_true(indexes[1].data_type == "integer")
     }
     None => fail("expected payload indexes")
@@ -1240,7 +1306,7 @@ test "cluster info parses the full result object" {
   match @moon-qdrant.ClusterInfo::from_json(parsed) {
     Some(info) => {
       assert_true(info.status == "enabled")
-      assert_true(info.peer_id.to_string() == "4992814939605239476")
+      assert_true(info.peer_id == "4992814939605239476")
       assert_true(info.peers.length() == 1)
       match info.peers.get("4992814939605239476") {
         Some(peer) =>
@@ -1298,13 +1364,9 @@ test "collection cluster info parses local, remote shards and transfers" {
       assert_true(info.local_shards[0].points_count == 3761L)
       assert_true(info.local_shards[0].state == "Active")
       assert_true(info.remote_shards.length() == 1)
-      assert_true(
-        info.remote_shards[0].peer_id.to_string() == "4992814939605239477",
-      )
+      assert_true(info.remote_shards[0].peer_id == "4992814939605239477")
       assert_true(info.shard_transfers.length() == 1)
-      assert_true(
-        info.shard_transfers[0].to.to_string() == "4992814939605239477",
-      )
+      assert_true(info.shard_transfers[0].to == "4992814939605239477")
       match info.shard_transfers[0].method_name {
         Some(m) => assert_true(m == "stream_records")
         None => fail("expected transfer method")
@@ -1319,8 +1381,8 @@ test "collection cluster op body wraps replicate_shard parameters" {
   let body = @moon-qdrant.collection_cluster_op_body(
     "replicate_shard",
     0L,
-    from_peer_id=Some(1L),
-    to_peer_id=Some(2L),
+    from_peer_id=Some("1"),
+    to_peer_id=Some("2"),
   )
   // Qdrant's ClusterOperations is an untagged enum of single-key objects.
   // A flat body carrying "method" / "shard_id" matches no variant (HTTP 400).
@@ -1350,7 +1412,7 @@ test "collection cluster op body keeps u64 shard and peer ids exact" {
   let body = @moon-qdrant.collection_cluster_op_body(
     "drop_replica",
     9007199254740993L,
-    peer_id=Some(9007199254740995L),
+    peer_id=Some("9007199254740995"),
   )
   assert_true(field(body, "method") is None)
   let params = match field(body, "drop_replica") {
@@ -1369,6 +1431,35 @@ test "collection cluster op body keeps u64 shard and peer ids exact" {
   }
   assert_true(params.get("from_peer_id") is None)
   assert_true(params.get("to_peer_id") is None)
+}
+
+///|
+test "peer ids beyond Int64::max keep their exact wire text" {
+  // Qdrant peer ids are random u64 values; this one exceeds Int64::max.
+  let text = "18446744073709551615"
+  let body = @moon-qdrant.collection_cluster_op_body(
+    "drop_replica",
+    0L,
+    peer_id=Some(text),
+  )
+  let params = match field(body, "drop_replica") {
+    Some(Object(m)) => m
+    _ => fail("expected a drop_replica object")
+  }
+  // The number keeps its exact decimal text on the wire even though the
+  // in-memory double value is only approximate.
+  match params.get("peer_id") {
+    Some(Number(n, repr~)) => {
+      assert_true(repr == Some(text))
+      assert_true(n > 1.8e19)
+    }
+    _ => fail("expected peer_id")
+  }
+  // Round-trip through the parser: the response text yields the same id.
+  match @moon-qdrant.u64_text_of_json(params["peer_id"]) {
+    Some(v) => assert_true(v == text)
+    None => fail("expected u64 text")
+  }
 }
 
 ///|
@@ -1569,9 +1660,9 @@ test "shard_source_peer picks a peer holding the requested shard" {
     Some(layout) => {
       // remote shard 0 -> its peer, local shard 1 -> the local peer,
       // unknown shard -> local peer fallback
-      assert_true(@moon-qdrant.shard_source_peer(layout, 0L) == 2L)
-      assert_true(@moon-qdrant.shard_source_peer(layout, 1L) == 1L)
-      assert_true(@moon-qdrant.shard_source_peer(layout, 99L) == 1L)
+      assert_true(@moon-qdrant.shard_source_peer(layout, 0L) == "2")
+      assert_true(@moon-qdrant.shard_source_peer(layout, 1L) == "1")
+      assert_true(@moon-qdrant.shard_source_peer(layout, 99L) == "1")
     }
     None => fail("expected a collection cluster layout")
   }

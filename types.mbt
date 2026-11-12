@@ -303,14 +303,17 @@ pub fn CollectionList::from_json(json : Json) -> CollectionList? {
 /// Detailed information about a collection, from GET /collections/{name}.
 pub struct CollectionInfo {
   status : String
-  points_count : Int32?
+  points_count : Int64?
   vectors : VectorParams?
+  named_vectors : Map[String, VectorParams]?
 }
 
 ///|
 /// Parse the result object of GET /collections/{name} into a CollectionInfo.
-/// `points_count` and `vectors` are optional because Qdrant may omit them
-/// while a collection is still building.
+/// `points_count`, `vectors` and `named_vectors` are optional because Qdrant
+/// may omit them while a collection is still building. For a dense collection
+/// `vectors` carries the single vector config; for a named-vector collection
+/// `named_vectors` maps each vector name to its config and `vectors` is None.
 pub fn CollectionInfo::from_json(json : Json) -> CollectionInfo? {
   guard json is Object(members) else { return None }
   let result = match members.get("result") {
@@ -322,22 +325,48 @@ pub fn CollectionInfo::from_json(json : Json) -> CollectionInfo? {
     _ => return None
   }
   let points_count = match result.get("points_count") {
-    Some(Number(n, ..)) => Some(n.to_int())
+    Some(n) => int64_of_json(n)
     _ => None
   }
-  let vectors = match result.get("config") {
+  let mut vectors : VectorParams? = None
+  let mut named_vectors : Map[String, VectorParams]? = None
+  match result.get("config") {
     Some(Object(config)) =>
       match config.get("params") {
         Some(Object(params)) =>
           match params.get("vectors") {
-            Some(vectors_json) => VectorParams::from_json(vectors_json)
-            None => None
+            // Dense form: {"size": 4, "distance": "Cosine"} (scalars).
+            // Named form: {"text": {"size": ..., "distance": ...}, ...}
+            // (every value is an object).
+            Some(Object(vm)) => {
+              let mut all_objects = true
+              for key in vm.keys() {
+                guard vm[key] is Object(_) else {
+                  all_objects = false
+                  break
+                }
+              }
+              if all_objects && vm.length() > 0 {
+                let map : Map[String, VectorParams] = Map([])
+                for key in vm.keys() {
+                  match VectorParams::from_json(vm[key]) {
+                    Some(vp) => map[key] = vp
+                    None => return None
+                  }
+                }
+                named_vectors = Some(map)
+              } else {
+                vectors = VectorParams::from_json(Json::object(vm))
+              }
+            }
+            Some(other) => vectors = VectorParams::from_json(other)
+            None => ()
           }
-        _ => None
+        _ => ()
       }
-    _ => None
+    _ => ()
   }
-  Some({ status, points_count, vectors, })
+  Some({ status, points_count, vectors, named_vectors, })
 }
 
 ///|
@@ -624,11 +653,11 @@ pub fn parse_result(json : Json) -> Json? {
 ///|
 /// Parse the `result` object of a count response: `{ "count": 42 }`.
 /// Returns None when the shape does not match.
-pub fn parse_count_result(json : Json) -> Int32? {
+pub fn parse_count_result(json : Json) -> Int64? {
   match json {
     Object(members) =>
       match members.get("count") {
-        Some(Number(n, ..)) => Some(n.to_int())
+        Some(n) => int64_of_json(n)
         _ => None
       }
     _ => None
@@ -800,7 +829,7 @@ pub fn SearchParams::to_json(self : SearchParams) -> Json {
 pub struct SnapshotInfo {
   name : String
   creation_time : String?
-  size : Int32?
+  size : Int64?
 }
 
 ///|
@@ -816,7 +845,7 @@ pub fn SnapshotInfo::from_json(json : Json) -> SnapshotInfo? {
     _ => None
   }
   let size = match members.get("size") {
-    Some(Number(n, ..)) => Some(n.to_int())
+    Some(n) => int64_of_json(n)
     _ => None
   }
   Some({ name, creation_time, size, })
@@ -846,23 +875,33 @@ pub fn parse_snapshots(json : Json) -> Array[SnapshotInfo]? {
 
 ///|
 /// One payload index entry, from the `payload_schema` of a collection info
-/// response.
+/// response. `field_name` is the payload field the index is on; `field_schema`
+/// is the index descriptor object exactly as Qdrant reports it (including
+/// `data_type`, `points` and any index `params`).
 pub struct PayloadIndexInfo {
+  field_name : String
   data_type : String
+  points_count : Int64?
   field_schema : Json?
 }
 
 ///|
 /// Parse one payload index entry:
 /// `{ "data_type": "keyword", "field_schema": "keyword", "points": 3 }`.
+/// (The field name is not part of this flat shape; it is only known from the
+/// `payload_schema` object's keys, see `parse_payload_indexes`.)
 pub fn PayloadIndexInfo::from_json(json : Json) -> PayloadIndexInfo? {
   guard json is Object(members) else { return None }
   let data_type = match members.get("data_type") {
     Some(String(s)) => s
     _ => return None
   }
+  let points_count = match members.get("points") {
+    Some(n) => int64_of_json(n)
+    _ => None
+  }
   let field_schema = members.get("field_schema")
-  Some({ data_type, field_schema, })
+  Some({ field_name: "", data_type, points_count, field_schema, })
 }
 
 ///|
@@ -886,9 +925,15 @@ pub fn parse_payload_indexes(json : Json) -> Array[PayloadIndexInfo]? {
                       Some(String(s)) => s
                       _ => "unknown"
                     }
+                    let points_count = match im.get("points") {
+                      Some(n) => int64_of_json(n)
+                      _ => None
+                    }
                     out.push({
+                      field_name: field,
                       data_type,
-                      field_schema: Some(Json::string(field)),
+                      points_count,
+                      field_schema: Some(schema[field]),
                     })
                   }
                   _ => ()
@@ -972,7 +1017,7 @@ pub fn CollectionUpdate::to_json(self : CollectionUpdate) -> Json {
 /// payload value together with the number of points carrying it.
 pub struct FacetHit {
   value : Json
-  count : Int32
+  count : Int64
 }
 
 ///|
@@ -984,7 +1029,11 @@ pub fn FacetHit::from_json(json : Json) -> FacetHit? {
     _ => return None
   }
   let count = match members.get("count") {
-    Some(Number(n, ..)) => n.to_int()
+    Some(n) =>
+      match int64_of_json(n) {
+        Some(v) => v
+        None => return None
+      }
     _ => return None
   }
   Some({ value, count, })
@@ -1223,6 +1272,49 @@ pub fn int64_to_json(v : Int64) -> Json {
 }
 
 ///|
+/// Read a peer id as its exact decimal text. Qdrant peer ids are random u64
+/// values and roughly half of them exceed `Int64::max`, so they cannot be
+/// modeled as Int64 without silent wrapping; the client keeps the decimal
+/// text instead. The MoonBit JSON lexer preserves the original number text
+/// for values outside the exact double range, and in-range integers convert
+/// exactly.
+pub fn u64_text_of_json(json : Json) -> String? {
+  match json {
+    Number(n, repr~) =>
+      match repr {
+        Some(s) => Some(s)
+        None => Some(n.to_int64().to_string())
+      }
+    _ => None
+  }
+}
+
+///|
+/// Sum the digits of a decimal string as a Double (approximate for more
+/// than 17 significant digits). Used only as the in-memory value of a JSON
+/// number whose exact wire text is carried by the `repr`.
+fn double_of_decimal(s : String) -> Double {
+  let mut acc = 0.0
+  for i in 0..<s.length() {
+    let c = s[i]
+    if c >= '0' && c <= '9' {
+      acc = acc * 10.0 + Double::from_int(c.to_int() - 48)
+    }
+  }
+  acc
+}
+
+///|
+/// Serialize a peer id given as decimal text as an exact JSON number. The
+/// number's `repr` carries the exact decimal text, so the wire form is
+/// identical to the original u64 id even when the in-memory double is only
+/// approximate (ids above 2^53) or unrepresentable as Int64 (above
+/// `Int64::max`, which roughly half of random u64 peer ids are).
+pub fn peer_id_to_json(text : String) -> Json {
+  Json::number(double_of_decimal(text), repr=text)
+}
+
+///|
 /// Parse an optional bool that may be absent from the wire.
 fn optional_bool(json : Json) -> Bool? {
   match json {
@@ -1265,12 +1357,13 @@ pub fn PeerInfo::from_json(json : Json) -> PeerInfo? {
 }
 
 ///|
-/// Raft consensus state of the cluster.
+/// Raft consensus state of the cluster. `leader` is the peer id of the
+/// current leader, kept as exact decimal text (Qdrant peer ids are u64).
 pub struct RaftInfo {
   term : Int64?
   commit : Int64?
   pending_operations : Int64?
-  leader : Int64?
+  leader : String?
   role : String?
   is_voter : Bool?
 }
@@ -1292,7 +1385,7 @@ pub fn RaftInfo::from_json(json : Json) -> RaftInfo? {
     _ => None
   }
   let leader = match members.get("leader") {
-    Some(n) => int64_of_json(n)
+    Some(n) => u64_text_of_json(n)
     _ => None
   }
   let role = match members.get("role") {
@@ -1307,10 +1400,12 @@ pub fn RaftInfo::from_json(json : Json) -> RaftInfo? {
 }
 
 ///|
-/// Overall cluster state, from `GET /cluster`.
+/// Overall cluster state, from `GET /cluster`. `peer_id` is this node's peer
+/// id, kept as exact decimal text (Qdrant peer ids are random u64 values
+/// that cannot fit in Int64 without wrapping).
 pub struct ClusterInfo {
   status : String
-  peer_id : Int64
+  peer_id : String
   peers : Map[String, PeerInfo]
   raft_info : RaftInfo?
 }
@@ -1328,11 +1423,11 @@ pub fn ClusterInfo::from_json(json : Json) -> ClusterInfo? {
   // shapes parse.
   let peer_id = match members.get("peer_id") {
     Some(n) =>
-      match int64_of_json(n) {
+      match u64_text_of_json(n) {
         Some(v) => v
         None => return None
       }
-    _ => 0L
+    _ => "0"
   }
   let peers : Map[String, PeerInfo] = Map([])
   match members.get("peers") {
@@ -1388,10 +1483,11 @@ pub fn LocalShardInfo::from_json(json : Json) -> LocalShardInfo? {
 }
 
 ///|
-/// A shard replica hosted on a remote peer.
+/// A shard replica hosted on a remote peer. `peer_id` is kept as exact
+/// decimal text (Qdrant peer ids are u64).
 pub struct RemoteShardInfo {
   shard_id : Int64
-  peer_id : Int64
+  peer_id : String
   state : String
 }
 
@@ -1409,7 +1505,7 @@ pub fn RemoteShardInfo::from_json(json : Json) -> RemoteShardInfo? {
   }
   let peer_id = match members.get("peer_id") {
     Some(n) =>
-      match int64_of_json(n) {
+      match u64_text_of_json(n) {
         Some(v) => v
         None => return None
       }
@@ -1423,11 +1519,12 @@ pub fn RemoteShardInfo::from_json(json : Json) -> RemoteShardInfo? {
 }
 
 ///|
-/// An in-flight shard transfer between two peers.
+/// An in-flight shard transfer between two peers. `from` / `to` are peer
+/// ids kept as exact decimal text (Qdrant peer ids are u64).
 pub struct ShardTransferInfo {
   shard_id : Int64
-  from : Int64
-  to : Int64
+  from : String
+  to : String
   method_name : String?
 }
 
@@ -1445,7 +1542,7 @@ pub fn ShardTransferInfo::from_json(json : Json) -> ShardTransferInfo? {
   }
   let from = match members.get("from") {
     Some(n) =>
-      match int64_of_json(n) {
+      match u64_text_of_json(n) {
         Some(v) => v
         None => return None
       }
@@ -1453,7 +1550,7 @@ pub fn ShardTransferInfo::from_json(json : Json) -> ShardTransferInfo? {
   }
   let to = match members.get("to") {
     Some(n) =>
-      match int64_of_json(n) {
+      match u64_text_of_json(n) {
         Some(v) => v
         None => return None
       }
@@ -1468,8 +1565,9 @@ pub fn ShardTransferInfo::from_json(json : Json) -> ShardTransferInfo? {
 
 ///|
 /// Per-collection cluster layout, from `GET /collections/{name}/cluster`.
+/// `peer_id` is kept as exact decimal text (Qdrant peer ids are u64).
 pub struct CollectionClusterInfo {
-  peer_id : Int64
+  peer_id : String
   shard_count : Int64
   local_shards : Array[LocalShardInfo]
   remote_shards : Array[RemoteShardInfo]
@@ -1482,7 +1580,7 @@ pub fn CollectionClusterInfo::from_json(json : Json) -> CollectionClusterInfo? {
   guard json is Object(members) else { return None }
   let peer_id = match members.get("peer_id") {
     Some(n) =>
-      match int64_of_json(n) {
+      match u64_text_of_json(n) {
         Some(v) => v
         None => return None
       }
