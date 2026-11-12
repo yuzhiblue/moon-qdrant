@@ -4,6 +4,24 @@ All notable changes to moon-qdrant are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.6.0] - 2026-11-12
+
+### Changed
+
+- **HTTP transport migrated from `oboard/mio@0.5.4` to `gaato/mttp_async@0.1.0`**
+  (+ `gaato/mttp@0.2.0`, `moonbitlang/async@0.22.9`). The public API surface is
+  unchanged; only the `QdrantClient.http` field's type changed (it was never
+  externally constructible). Gains:
+  - the dependency tree is fully current (no legacy-manifest / `try?` sources),
+    so `moon publish` to mooncakes.io works again — the bikallem/compress CI
+    patch (`scripts/compress-patch/`) and the workflow migrate-legacy loop were
+    removed;
+  - gzip/deflate/br/zstd responses are decompressed correctly, so the old
+    `Accept-Encoding: identity` workaround is gone;
+  - retries with a retry budget, per-attempt (`timeout_ms`) and whole-call
+    deadlines, and redirects are now handled by the transport.
+- `QdrantClient::close()` is new: release the client's connection pool.
+
 ## [0.5.1] - 2026-11-12
 
 ### Fixed

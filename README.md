@@ -7,7 +7,8 @@ A MoonBit client for the [Qdrant](https://qdrant.tech/) vector database REST API
 
 moon-qdrant lets MoonBit programs manage Qdrant collections, upsert points,
 and run vector searches without leaving the MoonBit ecosystem. It is built on
-`oboard/mio` for HTTP transport and the MoonBit core JSON library.
+`gaato/mttp_async` for HTTP transport (HTTP/1.1 with retries, deadlines and
+transparent compression) and the MoonBit core JSON library.
 
 ## Why
 

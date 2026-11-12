@@ -2,8 +2,8 @@
 package "yuzhiblue/moon-qdrant"
 
 import {
+  "gaato/mttp/client",
   "moonbitlang/core/json",
-  "oboard/mio",
 }
 
 // Values
@@ -205,8 +205,9 @@ pub fn PointStruct::vector_json(Self) -> @json.Json
 pub struct QdrantClient {
   base_url : String
   api_key : String?
-  http : @mio.RequestClient
+  http : @client.Client
 }
+pub fn QdrantClient::close(Self) -> Unit
 pub async fn QdrantClient::cluster_info(Self) -> ClusterInfo
 pub async fn QdrantClient::collection_cluster_info(Self, String) -> CollectionClusterInfo
 pub async fn QdrantClient::collection_exists(Self, String) -> Bool

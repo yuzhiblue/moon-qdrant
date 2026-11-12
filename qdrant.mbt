@@ -2,16 +2,39 @@
 /// QdrantClient: a minimal, dependency-light MoonBit client for the
 /// Qdrant vector database REST API.
 ///
-/// Transport is provided by `@mio`; JSON is handled by `@json` from core.
-/// This file intentionally keeps the API surface small and explicit so each
-/// method maps 1:1 to a documented Qdrant REST endpoint.
+/// Transport is provided by `gaato/mttp_async` (HTTP/1.1 with retries,
+/// deadlines and decompression over the `moonbitlang/core/async` runtime);
+/// JSON is handled by `@json` from core. This file intentionally keeps the
+/// API surface small and explicit so each method maps 1:1 to a documented
+/// Qdrant REST endpoint.
+
+///|
+/// HTTP verbs used by the Qdrant REST API.
+priv enum Method {
+  Get
+  Post
+  Put
+  Delete
+  Patch
+}
+
+///|
+fn Method::to_string(self : Method) -> String {
+  match self {
+    Get => "GET"
+    Post => "POST"
+    Put => "PUT"
+    Delete => "DELETE"
+    Patch => "PATCH"
+  }
+}
 
 ///|
 /// Configuration for a QdrantClient.
 pub struct QdrantClient {
   base_url : String
   api_key : String?
-  http : @mio.RequestClient
+  http : @client.Client
 }
 
 ///|
@@ -21,6 +44,10 @@ pub struct QdrantClient {
 ///
 /// `api_key` is optional and, when set, is sent as the `api-key` header
 /// expected by Qdrant's API-key authentication.
+///
+/// `timeout_ms` is the per-attempt deadline; the whole call (retries
+/// included) is bounded by 12x that, with a floor of mttp_async's 120 s
+/// default when the per-attempt timeout is large.
 pub fn QdrantClient::new(
   base_url : String,
   api_key~ : String? = None,
@@ -31,8 +58,19 @@ pub fn QdrantClient::new(
   } else {
     base_url
   }
-  let http = @mio.RequestClient::builder().timeout(timeout_ms).build()
+  let total = timeout_ms * 12
+  let http = @mttp_async.client(
+    base_url=base,
+    timeout_ms~,
+    total_ms=if total > 120_000 { total } else { 120_000 },
+  )
   { base_url: base, api_key, http, }
+}
+
+///|
+/// Release the client's connection pool. The client is unusable afterwards.
+pub fn QdrantClient::close(self : QdrantClient) -> Unit {
+  self.http.close()
 }
 
 ///|
@@ -122,37 +160,47 @@ fn hex_digit(v : Int32) -> String {
 
 ///|
 /// Send a request and return the HTTP status code together with the raw
-/// text body (before JSON parsing).
+/// text body (before JSON parsing). The path is resolved against the
+/// client's base URL. Network failures raise; non-2xx responses are
+/// returned like any other status so callers can inspect the error body.
 async fn QdrantClient::send_raw(
   self : QdrantClient,
-  verb : @mio.RequestMethod,
+  verb : Method,
   path : String,
   body : Json?,
 ) -> (Int32, String) {
-  let url = join_url(self.base_url, path)
-  let builder = match verb {
-    Get => self.http.get(url)
-    Post => self.http.post(url)
-    Put => self.http.put(url)
-    Delete => self.http.delete(url)
-    Patch => self.http.patch(url)
-    _ => raise Failure("unsupported method for Qdrant API")
+  let request = match verb {
+    Get => @mttp.Request::get(path)
+    Post => @mttp.Request::post(path)
+    Put => @mttp.Request::put(path)
+    Delete => @mttp.Request::delete(path)
+    Patch => @mttp.Request::patch(path)
   }
-  let builder = match self.api_key {
-    Some(key) => builder.header("api-key", key)
-    None => builder
+  let request = match self.api_key {
+    Some(key) => request.header("api-key", key)
+    None => request
   }
-  // Ask Qdrant for identity (uncompressed) responses. mio advertises
-  // `Accept-Encoding: gzip, deflate, br, zstd, identity` by default and
-  // auto-decompresses, but its deflate path fails on Qdrant's payloads
-  // (BadRequest). Opt out of compression entirely.
-  let builder = builder.header("Accept-Encoding", "identity")
-  let builder = match body {
-    Some(json) => builder.json(json)
-    None => builder
+  // mttp_async decompresses gzip/deflate/br/zstd transparently, so no
+  // `Accept-Encoding: identity` workaround is needed (unlike the old mio
+  // transport, whose deflate path failed on Qdrant payloads).
+  let request = match body {
+    Some(json) => request.body_json(json)
+    None => request
   }
-  let res = builder.send()
-  (res.response.code, res.text())
+  // `any_status` keeps non-2xx responses as values: Qdrant reports errors
+  // (404, 400, ...) with a JSON body that callers parse, not as failures.
+  let reply = @mttp_async.request(request)
+    .response(@mttp_async.as_string().any_status())
+    .send(self.http) catch {
+      error =>
+        raise Failure(
+          "transport error on \{verb.to_string()} \{path}: \{error}",
+        )
+    }
+  match reply.body {
+    Ok(text) => (reply.status, text)
+    Err(failure) => (failure.head().status, "\{failure}")
+  }
 }
 
 ///|
@@ -170,7 +218,7 @@ fn json_preview(text : String) -> String {
 /// JSON body.
 async fn QdrantClient::send(
   self : QdrantClient,
-  verb : @mio.RequestMethod,
+  verb : Method,
   path : String,
   body : Json?,
 ) -> (Int32, Json) {
@@ -197,7 +245,7 @@ async fn QdrantClient::send(
 /// the body. Used by endpoints that answer with plain text (e.g. /healthz).
 async fn QdrantClient::send_status(
   self : QdrantClient,
-  verb : @mio.RequestMethod,
+  verb : Method,
   path : String,
   body : Json?,
 ) -> Int32 {
@@ -210,7 +258,7 @@ async fn QdrantClient::send_status(
 /// Raises on transport errors or when the server answers with a non-2xx code.
 async fn QdrantClient::request_json(
   self : QdrantClient,
-  verb : @mio.RequestMethod,
+  verb : Method,
   path : String,
   body : Json?,
 ) -> Json {
