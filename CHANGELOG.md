@@ -4,6 +4,31 @@ All notable changes to moon-qdrant are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.7.1] - 2026-11-22
+
+### Fixed
+
+- **`parse_int64` no longer wraps values above `Int64::max`**: they now
+  return `None`, so a Qdrant point id or count above 2^63-1 fails loudly
+  instead of silently becoming a negative id that would target the wrong
+  point on later reads/deletes. (Such ids still cannot be represented by
+  this client; they are simply no longer corrupted.)
+- **`upsert_points_batch` collects named-vector keys from every point**,
+  not just the first. A vector name that only appeared on later points in
+  the batch was silently dropped from the request.
+- **`CollectionUpdate::to_json` keeps both dense and named vector configs**
+  when both are set: the unnamed config is written under the `""` key of
+  the same `vectors` object instead of being overwritten.
+- **`PayloadIndexInfo::from_json` reads Qdrant's real descriptor shape**
+  (`{data_type, points, params, ...}`), including `field_name` when present;
+  the legacy `field_schema` key is still honoured.
+- **`url_encode` replaces lone surrogates with U+FFFD** instead of emitting
+  invalid UTF-8 for malformed UTF-16 input.
+
+### Changed
+
+- The payload-index parse test no longer depends on map iteration order.
+
 ## [0.7.0] - 2026-11-12
 
 ### Breaking

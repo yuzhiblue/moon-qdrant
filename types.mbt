@@ -900,8 +900,17 @@ pub fn PayloadIndexInfo::from_json(json : Json) -> PayloadIndexInfo? {
     Some(n) => int64_of_json(n)
     _ => None
   }
-  let field_schema = members.get("field_schema")
-  Some({ field_name: "", data_type, points_count, field_schema, })
+  let field_name = match members.get("field_name") {
+    Some(String(s)) => s
+    _ => ""
+  }
+  // The real payload_schema value is the descriptor object itself; the
+  // legacy flat shape carries a separate "field_schema" key, honoured here.
+  let field_schema = match members.get("field_schema") {
+    Some(schema) => Some(schema)
+    None => Some(json)
+  }
+  Some({ field_name, data_type, points_count, field_schema, })
 }
 
 ///|
@@ -978,23 +987,26 @@ pub fn CollectionUpdate::new(
 /// Convert to the PATCH request body, omitting unset fields.
 pub fn CollectionUpdate::to_json(self : CollectionUpdate) -> Json {
   let members : Map[String, Json] = Map([])
+  let vmembers : Map[String, Json] = Map([])
   match self.vectors {
     Some(v) =>
       // Qdrant (>= 1.13) requires a vector name when updating vector
       // parameters via PATCH; collections without named vectors use the
       // empty name. Older clients sent the params object directly.
-      members["vectors"] = Json::object({ "": v.to_json() })
+      vmembers[""] = v.to_json()
     None => ()
   }
   match self.named_vectors {
-    Some(named) => {
-      let vmembers : Map[String, Json] = Map([])
+    Some(named) =>
       for name in named.keys() {
         vmembers[name] = named[name].to_json()
       }
-      members["vectors"] = Json::object(vmembers)
-    }
     None => ()
+  }
+  if !vmembers.is_empty() {
+    // Both an unnamed ("") and named vectors can be updated at once; a
+    // named entry literally called "" takes precedence over the dense one.
+    members["vectors"] = Json::object(vmembers)
   }
   let params : Map[String, Json] = Map([])
   match self.replication_factor {
@@ -1236,7 +1248,15 @@ pub fn parse_int64(s : String) -> Int64? {
     if c < '0' || c > '9' {
       return None
     }
-    acc = acc * 10L + Int64::from_int(c.to_int() - 48)
+    let digit = Int64::from_int(c.to_int() - 48)
+    // Refuse values above Int64::max instead of wrapping silently: a Qdrant
+    // point id or count larger than 2^63-1 cannot be represented here, and
+    // returning a wrapped negative id would make later reads/deletes target
+    // the wrong point. Callers then fail loudly on such responses.
+    if acc > (9223372036854775807L - digit) / 10L {
+      return None
+    }
+    acc = acc * 10L + digit
     i = i + 1
   }
   if neg {

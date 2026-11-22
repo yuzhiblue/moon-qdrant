@@ -810,6 +810,41 @@ test "collection update serializes named vector updates" {
 }
 
 ///|
+test "collection update keeps both dense and named vector configs" {
+  let named : Map[String, @moon-qdrant.VectorParams] = Map([])
+  named["text"] = @moon-qdrant.VectorParams::new(8, @moon-qdrant.Distance::Dot)
+  let update = @moon-qdrant.CollectionUpdate::new(
+    vectors=Some(
+      @moon-qdrant.VectorParams::new(4, @moon-qdrant.Distance::Cosine),
+    ),
+    named_vectors=Some(named),
+  )
+  let json = update.to_json()
+  match field(json, "vectors") {
+    Some(Object(vectors)) => {
+      assert_true(vectors.length() == 2)
+      match vectors.get("") {
+        Some(Object(params)) =>
+          match params.get("size") {
+            Some(Number(n, ..)) => assert_true(n == 4.0)
+            _ => fail("expected dense size")
+          }
+        _ => fail("expected dense params under the empty name")
+      }
+      match vectors.get("text") {
+        Some(Object(params)) =>
+          match params.get("size") {
+            Some(Number(n, ..)) => assert_true(n == 8.0)
+            _ => fail("expected text size")
+          }
+        _ => fail("expected text params")
+      }
+    }
+    _ => fail("expected vectors object")
+  }
+}
+
+///|
 test "collection update wraps dense vector params under the empty name" {
   // Qdrant >= 1.13 requires a vector name in PATCH updates; dense
   // collections use the empty name, so the wire shape must be
@@ -850,6 +885,32 @@ test "url_encode percent-encodes reserved characters" {
 }
 
 ///|
+test "PayloadIndexInfo::from_json reads real descriptor shapes" {
+  let json : Json = {
+    "field_name": "tag",
+    "data_type": "keyword",
+    "points": 7,
+    "params": { "is_tenant": true },
+  }
+  match @moon-qdrant.PayloadIndexInfo::from_json(json) {
+    Some(info) => {
+      assert_true(info.field_name == "tag")
+      assert_true(info.data_type == "keyword")
+      match info.points_count {
+        Some(n) => assert_true(n == 7L)
+        None => fail("expected points count")
+      }
+      // No separate field_schema key: the descriptor is the whole object.
+      match info.field_schema {
+        Some(Object(m)) => assert_true(m.contains("params"))
+        _ => fail("expected the descriptor object")
+      }
+    }
+    None => fail("expected payload index info")
+  }
+}
+
+///|
 test "url_encode combines surrogate pairs into 4-byte UTF-8" {
   // U+1F44D thumbs-up arrives as the surrogate pair D83D DC4D and must be
   // encoded as its full code point (F0 9F 91 8D), not as two broken
@@ -857,6 +918,11 @@ test "url_encode combines surrogate pairs into 4-byte UTF-8" {
   assert_eq("%F0%9F%91%8D", @moon-qdrant.url_encode("👍"))
   // Mixed BMP and supplementary-plane characters.
   assert_eq("col%F0%9F%91%8D%E4%B8%AD", @moon-qdrant.url_encode("col👍中"))
+  // Lone surrogates are malformed UTF-16: use U+FFFD, not invalid UTF-8.
+  let high = Int32::unsafe_to_char(0xD83D).to_string()
+  let low = Int32::unsafe_to_char(0xDC4D).to_string()
+  assert_eq("%EF%BF%BD", @moon-qdrant.url_encode(high))
+  assert_eq("%EF%BF%BD", @moon-qdrant.url_encode(low))
 }
 
 ///|
@@ -927,19 +993,28 @@ test "payload index list parses the collection-info response" {
   match @moon-qdrant.parse_payload_indexes(json) {
     Some(indexes) => {
       assert_true(indexes.length() == 2)
-      // The field name, the descriptor and the point count are all surfaced.
-      assert_true(indexes[0].field_name == "tag")
-      assert_true(indexes[0].data_type == "keyword")
-      match indexes[0].points_count {
-        Some(n) => assert_true(n == 3L)
-        None => fail("expected points count")
+      // Qdrant's payload_schema is a map; do not depend on iteration order.
+      let mut tag_ok = false
+      let mut price_ok = false
+      for index in indexes {
+        if index.field_name == "tag" {
+          tag_ok = index.data_type == "keyword"
+          match index.points_count {
+            Some(n) => tag_ok = tag_ok && n == 3L
+            None => ()
+          }
+          match index.field_schema {
+            Some(Object(m)) => tag_ok = tag_ok && m.contains("data_type")
+            _ => ()
+          }
+        } else if index.field_name == "price" {
+          price_ok = index.data_type == "integer"
+        } else {
+          fail("unexpected field name: " + index.field_name)
+        }
       }
-      match indexes[0].field_schema {
-        Some(Object(m)) => assert_true(m.contains("data_type"))
-        _ => fail("expected field schema descriptor")
-      }
-      assert_true(indexes[1].field_name == "price")
-      assert_true(indexes[1].data_type == "integer")
+      assert_true(tag_ok)
+      assert_true(price_ok)
     }
     None => fail("expected payload indexes")
   }
@@ -1124,6 +1199,24 @@ test "parse_int64 rejects malformed input" {
   assert_true(@moon-qdrant.parse_int64("-") is None)
   assert_true(@moon-qdrant.parse_int64("12a") is None)
   assert_true(@moon-qdrant.parse_int64("1.5") is None)
+}
+
+///|
+test "parse_int64 refuses values above Int64::max instead of wrapping" {
+  // A point id or count above 2^63-1 cannot be represented; wrapping would
+  // silently turn it into a negative id that later targets the wrong point.
+  assert_true(@moon-qdrant.parse_int64("9223372036854775808") is None)
+  assert_true(@moon-qdrant.parse_int64("18446744073709551615") is None)
+  assert_true(
+    @moon-qdrant.parse_int64("9223372036854775807")
+    is Some(9223372036854775807L),
+  )
+  // A point carrying such an id fails to parse instead of returning a bad id.
+  let json : Json = {
+    "id": exact_num("18446744073709551615"),
+    "vector": [0.1, 0.2, 0.3, 0.4],
+  }
+  assert_true(@moon-qdrant.PointStruct::from_json(json) is None)
 }
 
 ///|

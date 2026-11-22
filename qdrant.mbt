@@ -107,10 +107,10 @@ pub fn url_encode(input : String) -> String {
         if lo >= 0xDC00 && lo <= 0xDFFF {
           0x10000 + ((unit.to_int() - 0xD800) << 10) + (lo.to_int() - 0xDC00)
         } else {
-          unit.to_int()
+          0xFFFD
         }
       } else {
-        unit.to_int()
+        0xFFFD
       }
       out = out + encode_codepoint(cp)
       if cp >= 0x10000 {
@@ -118,8 +118,12 @@ pub fn url_encode(input : String) -> String {
       } else {
         i = i + 1
       }
+    } else if unit >= 0xDC00 && unit <= 0xDFFF {
+      // Lone low surrogate: use U+FFFD instead of emitting invalid UTF-8.
+      out = out + encode_codepoint(0xFFFD)
+      i = i + 1
     } else {
-      // Lone low surrogate or a regular BMP character.
+      // Regular BMP character.
       out = out + encode_codepoint(unit.to_int())
       i = i + 1
     }
@@ -451,40 +455,49 @@ pub async fn QdrantClient::upsert_points_batch(
   // The batch endpoint accepts a transposed vector layout: for dense points
   // `vectors` is an array of per-point vectors; for named points it is an
   // object mapping each vector name to the array of per-point vectors.
-  let vectors = match points[0].named_vectors {
-    Some(first_named) => {
-      let by_name : Map[String, Json] = Map([])
-      for name in first_named.keys() {
-        let rows : Array[Json] = []
-        for p in points {
-          match p.named_vectors {
-            Some(named) =>
-              match named.get(name) {
-                Some(vec) => rows.push(vector_to_json(vec))
-                None =>
-                  raise Failure(
-                    "inconsistent named vectors in batch: missing \"" +
-                    name +
-                    "\"",
-                  )
-              }
-            None => raise Failure("mixed dense/named points in batch upsert")
-          }
+  // Collect names from every point, not just the first: a name that only
+  // appears on later points must not be silently dropped from the request.
+  let seen_names : Map[String, Bool] = Map([])
+  for p in points {
+    match p.named_vectors {
+      Some(named) =>
+        for name in named.keys() {
+          seen_names[name] = true
         }
-        by_name[name] = Json::array(rows)
-      }
-      Json::object(by_name)
+      None => ()
     }
-    None => {
+  }
+  let vectors = if seen_names.is_empty() {
+    let rows : Array[Json] = []
+    for p in points {
+      if p.named_vectors is Some(_) {
+        raise Failure("mixed dense/named points in batch upsert")
+      }
+      rows.push(vector_to_json(p.vector))
+    }
+    Json::array(rows)
+  } else {
+    let by_name : Map[String, Json] = Map([])
+    for name in seen_names.keys() {
       let rows : Array[Json] = []
       for p in points {
-        if p.named_vectors is Some(_) {
-          raise Failure("mixed dense/named points in batch upsert")
+        match p.named_vectors {
+          Some(named) =>
+            match named.get(name) {
+              Some(vec) => rows.push(vector_to_json(vec))
+              None =>
+                raise Failure(
+                  "inconsistent named vectors in batch: missing \"" +
+                  name +
+                  "\"",
+                )
+            }
+          None => raise Failure("mixed dense/named points in batch upsert")
         }
-        rows.push(vector_to_json(p.vector))
       }
-      Json::array(rows)
+      by_name[name] = Json::array(rows)
     }
+    Json::object(by_name)
   }
   let body : Json = {
     "batch": {
