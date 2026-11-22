@@ -1,0 +1,44 @@
+name: Create missing GitHub Releases
+
+# One-shot maintenance workflow: run when this file is added/changed, and
+# create a Release for every tag that has one but no GitHub Release yet.
+# Idempotent: existing Releases are left untouched.
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/create-releases.yml
+
+permissions:
+  contents: write
+
+jobs:
+  create-releases:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Create missing Releases
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          for tag in v0.5.1 v0.6.0 v0.7.0 v0.7.1; do
+            if gh release view "$tag" >/dev/null 2>&1; then
+              echo "Release $tag already exists; skipping"
+              continue
+            fi
+            ver="${tag#v}"
+            notes=$(awk -v prefix="## [$ver]" '
+              index($0, prefix) == 1 { grab=1; next }
+              grab && /^## \[/ { exit }
+              grab { print }
+            ' CHANGELOG.md)
+            if [ -z "$notes" ]; then
+              notes="See CHANGELOG.md for $ver."
+            fi
+            echo "Creating Release $tag"
+            gh release create "$tag" --title "$tag" --notes "$notes"
+          done
