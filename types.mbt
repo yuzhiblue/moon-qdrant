@@ -1248,7 +1248,7 @@ pub fn parse_int64(s : String) -> Int64? {
     if c < '0' || c > '9' {
       return None
     }
-    let digit = Int64::from_int(c.to_int() - 48)
+    let digit = (c.to_int() - 48).to_int64()
     // Refuse values above Int64::max instead of wrapping silently: a Qdrant
     // point id or count larger than 2^63-1 cannot be represented here, and
     // returning a wrapped negative id would make later reads/deletes target
@@ -1318,7 +1318,7 @@ fn double_of_decimal(s : String) -> Double {
   for i in 0..<s.length() {
     let c = s[i]
     if c >= '0' && c <= '9' {
-      acc = acc * 10.0 + Double::from_int(c.to_int() - 48)
+      acc = acc * 10.0 + (c.to_int() - 48).to_double()
     }
   }
   acc

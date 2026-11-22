@@ -4,6 +4,19 @@ All notable changes to moon-qdrant are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.7.2] - 2026-11-22
+
+### Changed
+
+- **Upgrade `gaato/mttp` to 0.5.2** and drop the now-unneeded standalone
+  `moonbitlang/async` dependency: the old 0.3.0 transport no longer compiles
+  under moonc 0.10.22 (shipped by the continuously-updated CI toolchain)
+  because of a `FixedArray[Byte]` / `MutArrayView[Byte]` mismatch inside
+  mttp's socket layer. API surface is unchanged.
+- Replace deprecated `Int64::from_int` / `Double::from_int` calls with
+  `Int::to_int64` / `Int::to_double` so `moon check --deny-warn` stays clean
+  on current toolchains.
+
 ## [0.7.1] - 2026-11-22
 
 ### Fixed

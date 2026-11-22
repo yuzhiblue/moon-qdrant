@@ -1174,7 +1174,7 @@ test "service info parses version and commit" {
 /// A JSON number whose textual representation keeps the exact u64 value.
 fn exact_num(text : String) -> Json {
   // The double is only a fallback; the repr keeps the exact u64 text.
-  Json::number(Double::from_int(0), repr=text)
+  Json::number((0).to_double(), repr=text)
 }
 
 ///|
