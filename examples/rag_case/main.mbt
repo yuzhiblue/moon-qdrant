@@ -132,6 +132,19 @@ async fn run(base : String) -> Unit {
   )
   println("RAG: paged export returned \{all.length()} tenant documents")
 
+  // Exact-boundary regression: four documents at page_size=2 are exactly
+  // two pages. Reaching max_pages on the last page is not an overrun.
+  let exact = @moon_qdrant.scroll_all(
+    client,
+    semantic,
+    page_size=2,
+    max_pages=2,
+    filter=Some(scoped),
+  )
+  println(
+    "RAG: exact-boundary export returned \{exact.length()} tenant documents",
+  )
+
   client.delete_collection(semantic)
   client.delete_collection(lexical)
 }

@@ -82,23 +82,34 @@ pub fn rrf_fuse(
       match acc.get(hit.id) {
         Some(prev) => {
           let sources = prev.sources
-          if !sources.contains(hit.source_name()) {
-            sources.push(hit.source_name())
+          let source = hit.source_name()
+          let first_from_source = !sources.contains(source)
+          if first_from_source {
+            sources.push(source)
+          }
+          let higher_score = hit.score > prev.score
+          // One contribution per channel even when a channel returns the
+          // same id twice (a merged list can contain duplicates).
+          let next_rrf = if first_from_source {
+            prev.rrf_score + contribution
+          } else {
+            prev.rrf_score
+          }
+          let next_score = if higher_score { hit.score } else { prev.score }
+          // Keep the payload that belongs to the highest-scoring hit:
+          // business keys and tenant fields must not come from a different
+          // copy than the score used to rank it.
+          let next_payload = if higher_score {
+            hit.payload
+          } else {
+            prev.payload
           }
           acc[hit.id] = {
             id: prev.id,
-            score: if hit.score > prev.score {
-              hit.score
-            } else {
-              prev.score
-            },
-            rrf_score: prev.rrf_score + contribution,
+            score: next_score,
+            rrf_score: next_rrf,
             sources,
-            payload: if prev.payload is None {
-              hit.payload
-            } else {
-              prev.payload
-            },
+            payload: next_payload,
           }
         }
         None =>
@@ -288,6 +299,7 @@ pub async fn scroll_all(
   let out : Array[PointStruct] = []
   let mut offset : Int64? = None
   let mut pages = 0
+  let mut exhausted = false
   while pages < max_pages {
     let page = client.scroll_points(collection, page_size, filter~, offset~)
     for point in page.points {
@@ -303,10 +315,13 @@ pub async fn scroll_all(
             )
           _ => offset = Some(next)
         }
-      None => break
+      None => {
+        exhausted = true
+        break
+      }
     }
   }
-  if pages == max_pages && offset is Some(_) {
+  if pages == max_pages && !exhausted {
     raise Failure("scroll_all: exceeded max_pages=" + max_pages.to_string())
   }
   out

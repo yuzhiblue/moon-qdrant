@@ -49,6 +49,35 @@ test "rrf_fuse breaks ties deterministically" {
 }
 
 ///|
+test "rrf_fuse contributes once per channel even with duplicate ids" {
+  // A merged channel can contain the same id twice. Each channel may still
+  // contribute only once, otherwise one duplicated list outranks genuine
+  // agreement between two channels.
+  let channel = [hit(1L, 0.9, "semantic", None), hit(1L, 0.8, "semantic", None)]
+  let fused = @moon-qdrant.rrf_fuse([channel], k=0)
+  assert_true(fused.length() == 1)
+  assert_true(fused[0].rrf_score > 0.99 && fused[0].rrf_score < 1.01)
+  assert_true(fused[0].sources.length() == 1)
+  assert_true(fused[0].score > 0.89)
+}
+
+///|
+test "rrf_fuse keeps the payload belonging to the highest-scoring hit" {
+  let a = [hit(1L, 0.5, "a", Some(doc_payload("doc-A", "acme")))]
+  let b = [hit(1L, 0.9, "b", Some(doc_payload("doc-B", "acme")))]
+  let fused = @moon-qdrant.rrf_fuse([a, b])
+  assert_true(fused[0].id == 1L)
+  match fused[0].payload {
+    Some(Object(m)) =>
+      match m.get("doc_id") {
+        Some(String(id)) => assert_true(id == "doc-B")
+        _ => fail("expected a doc_id")
+      }
+    _ => fail("expected a payload")
+  }
+}
+
+///|
 test "dedupe_hits keeps the best copy of a business document" {
   let hits = [
     hit(1L, 0.9, "semantic", Some(doc_payload("doc-A", "acme"))),

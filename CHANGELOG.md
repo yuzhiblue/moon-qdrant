@@ -4,6 +4,28 @@ All notable changes to moon-qdrant are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.8.1] - 2026-11-25
+
+### Fixed
+
+- **`rrf_fuse` no longer double-counts duplicate ids within one channel**: a
+  merged list containing the same id twice used to add its reciprocal-rank
+  contribution twice, letting one duplicated channel outrank genuine agreement
+  between two channels. Each channel now contributes at most once.
+- **`rrf_fuse` keeps the score and payload from the same hit**: when an id
+  appears in several channels, the fused `score` and `payload` now both come
+  from the highest-scoring copy, so tenant fields and business keys can no
+  longer disagree with the value used to rank the document.
+- **`scroll_all` accepts an exact `max_pages` boundary**: consuming the last
+  page exactly at `max_pages` used to raise "exceeded max_pages" even when the
+  server had already reported completion. The limit is now only enforced
+  while more pages remain; repeated offsets are still rejected.
+
+### Added
+
+- Two regression tests for the fusion fixes (89 unit tests total), and an
+  exact-boundary export check in `examples/rag_case`.
+
 ## [0.8.0] - 2026-11-25
 
 ### Added
