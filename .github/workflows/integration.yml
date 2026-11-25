@@ -46,3 +46,6 @@ jobs:
       - name: run demo
         run: |
           moon run examples/demo -- http://localhost:6333
+      - name: RAG business case
+        run: |
+          moon run examples/rag_case -- http://localhost:6333

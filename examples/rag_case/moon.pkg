@@ -1,0 +1,8 @@
+supported_targets = "native"
+
+import {
+  "yuzhiblue/moon-qdrant" @moon_qdrant,
+  "moonbitlang/core/env",
+}
+
+pkgtype(kind: "executable")

@@ -7,16 +7,24 @@ A MoonBit client for the [Qdrant](https://qdrant.tech/) vector database REST API
 
 moon-qdrant lets MoonBit programs manage Qdrant collections, upsert points,
 and run vector searches without leaving the MoonBit ecosystem. It is built on
-`gaato/mttp_async` for HTTP transport (HTTP/1.1 with retries, deadlines and
-transparent compression) and the MoonBit core JSON library.
+`gaato/mttp` for HTTP transport (HTTP/1.1 with retries, deadlines and
+transparent compression), the MoonBit core JSON library, and adds a
+client-side retrieval layer for tenant isolation, multi-channel fusion,
+deduplication and bounded batch writes.
 
 ## Why
 
 Qdrant is one of the most widely used vector databases for RAG and embedding
 search. The MoonBit ecosystem already has vector engines and servers
 (e.g. `trkbt10/vcdb`), but no client library to talk to a running Qdrant
-service. moon-qdrant fills that gap with a small, explicit API surface that
-maps 1:1 to Qdrant REST endpoints.
+service. moon-qdrant fills that gap with a typed API for Qdrant's endpoints
+and, beyond the transport, a retrieval layer (`retrieval.mbt`) that owns the
+semantics Qdrant itself does not decide: reciprocal-rank fusion across
+channels, business-key deduplication, mandatory tenant filtering with
+payload verification, bounded batch partitioning and full scroll pagination.
+Exact u64 id handling (ids above 2^53 lose precision as doubles), the typed
+filter DSL and Qdrant wire-shape compatibility are also implemented here,
+not delegated to the server.
 
 ## Install
 
@@ -290,6 +298,25 @@ docker run -p 6333:6333 qdrant/qdrant
 moon run examples/demo -- http://localhost:6333
 ```
 
+Multi-tenant RAG business case (two retrieval channels, tenant-scoped filter,
+RRF fusion, deduplication and paged export):
+
+```bash
+moon run examples/rag_case -- http://localhost:6333
+```
+
+## Retrieval semantics (client-side)
+
+Qdrant performs each individual search; the following are computed by
+`retrieval.mbt` in the client and work across different channels/providers:
+
+- `rrf_fuse` — reciprocal rank fusion of several ranked lists
+- `dedupe_hits` — keep the best hit per business document id (payload key)
+- `TenantScope` — inject a mandatory tenant condition and verify returned
+  payloads, so a provider that ignores filters cannot leak another tenant's data
+- `chunk_points` — bounded batch partitioning for large writes
+- `scroll_all` — accumulate all scroll pages with an explicit safety bound
+
 ## Status / roadmap
 
 Implemented:
@@ -348,7 +375,7 @@ Unit tests cover the pure logic (models, JSON conversion, request bodies).
 The end-to-end path is verified in CI against a real Qdrant server
 (`.github/workflows/integration.yml` starts a `qdrant/qdrant` container and
 runs `examples/integration_check`, which asserts every client method against
-the live API, then runs the demo end to end).
+the live API, then runs the demo end to end and the multi-tenant RAG case).
 
 Locally, start Qdrant and run the same checks:
 
@@ -356,6 +383,7 @@ Locally, start Qdrant and run the same checks:
 docker run -p 6333:6333 qdrant/qdrant
 moon run examples/integration_check -- http://localhost:6333
 moon run examples/demo -- http://localhost:6333
+moon run examples/rag_case -- http://localhost:6333
 ```
 
 ## Reproducibility

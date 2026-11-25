@@ -7,9 +7,13 @@ import {
 }
 
 // Values
+pub fn chunk_points(Array[PointStruct], Int32) -> Array[Array[PointStruct]] raise
+
 pub fn collection_cluster_op_body(String, Int64, peer_id? : String?, from_peer_id? : String?, to_peer_id? : String?) -> @json.Json
 
 pub fn count_request_body(Filter?, Bool) -> @json.Json
+
+pub fn dedupe_hits(Array[RankedHit], key? : String) -> Array[RankedHit]
 
 pub fn int64_of_json(@json.Json) -> Int64?
 
@@ -42,6 +46,10 @@ pub fn parse_snapshots(@json.Json) -> Array[SnapshotInfo]?
 pub fn peer_id_to_json(String) -> @json.Json
 
 pub fn point_ids_to_json(Array[Int64]) -> @json.Json
+
+pub fn rrf_fuse(Array[Array[RankedHit]], k? : Int32, limit? : Int32) -> Array[RankedHit] raise
+
+pub async fn scroll_all(QdrantClient, String, page_size? : Int32, max_pages? : Int32, filter? : Filter?) -> Array[PointStruct]
 
 pub fn scroll_request_body(Int32, Filter?, Int64?, Bool, Bool) -> @json.Json
 
@@ -274,6 +282,15 @@ pub struct RaftInfo {
 }
 pub fn RaftInfo::from_json(@json.Json) -> Self?
 
+pub(all) struct RankedHit {
+  id : Int64
+  score : Double
+  rrf_score : Double
+  sources : Array[String]
+  payload : @json.Json?
+}
+pub fn RankedHit::from_scored_point(ScoredPoint, String) -> Self
+
 pub struct RemoteShardInfo {
   shard_id : Int64
   peer_id : String
@@ -327,6 +344,14 @@ pub struct SnapshotInfo {
   size : Int64?
 }
 pub fn SnapshotInfo::from_json(@json.Json) -> Self?
+
+pub struct TenantScope {
+  tenant_id : String
+}
+pub fn TenantScope::allows(Self, @json.Json?) -> Bool
+pub fn TenantScope::filter(Self, user? : Filter?) -> Filter
+pub fn TenantScope::filter_hits(Self, Array[RankedHit]) -> Array[RankedHit]
+pub fn TenantScope::new(String) -> Self raise
 
 pub struct VectorParams {
   size : Int32

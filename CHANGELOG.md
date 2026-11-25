@@ -4,6 +4,33 @@ All notable changes to moon-qdrant are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.8.0] - 2026-11-25
+
+### Added
+
+- **Client-side retrieval semantics layer (`retrieval.mbt`)** — logic the
+  Qdrant server does not perform and which is independent of HTTP transport:
+  - `rrf_fuse`: reciprocal rank fusion across arbitrary ranked channels
+    (different collections, queries or providers), with a total ordering for
+    deterministic ties;
+  - `dedupe_hits`: keep the best-ranked copy of each business document by a
+    payload key (default `doc_id`);
+  - `TenantScope`: mandatory tenant condition injection into user filters
+    plus verification of returned payloads, so a provider that ignores the
+    filter cannot leak another tenant's data;
+  - `chunk_points`: bounded batch partitioning for large writes;
+  - `scroll_all`: accumulates every scroll page with an explicit safety bound
+    against repeated offsets or runaway pagination.
+- **`examples/rag_case`**: a multi-tenant enterprise knowledge-base case —
+  two retrieval channels, tenant-scoped filters, RRF fusion, deduplication,
+  bounded batch writes and paged export. Added to the CI integration workflow.
+- 6 unit tests for the new pure logic (87 total).
+
+### Changed
+
+- README now documents the client-side net contribution and the business
+  case instead of describing the library as only a 1:1 endpoint mapping.
+
 ## [0.7.2] - 2026-11-22
 
 ### Changed
