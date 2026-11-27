@@ -8,12 +8,19 @@ on:
 
 jobs:
   integration:
+    name: Qdrant ${{ matrix.qdrant }}
     permissions:
       contents: read
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # 1.15.5 still has the service /locks API; 1.16+ removed it.
+        # The examples version-gate that check so both versions stay green.
+        qdrant: [v1.15.5, v1.20.2]
     services:
       qdrant:
-        image: qdrant/qdrant:v1.15.5
+        image: qdrant/qdrant:${{ matrix.qdrant }}
         ports:
           - 6333:6333
     steps:

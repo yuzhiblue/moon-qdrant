@@ -4,6 +4,43 @@ All notable changes to moon-qdrant are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.8.2] - 2026-11-27
+
+### Changed
+
+- **The RAG case now has a real lexical channel.** The previous example ran
+  the same dense cosine query against two collections and labelled one of
+  them "lexical". It now runs a dense vector search for the semantic channel
+  and literal term matching over the same tenant-scoped collection for the
+  lexical channel, and prints each channel's input and ranked output before
+  fusion. A duplicate `doc_id` copy exercises deduplication.
+- **README positioning rewritten.** The "no Qdrant client exists" claim and
+  the "Qdrant does not decide fusion" claim were inaccurate: `lexchb/moon_vector`,
+  `moonbitstack/moonqdrant` and several RRF/BM25 packages already exist, and
+  Qdrant supports server-side RRF through Query API prefetch. The README now
+  lists the reuse boundary, the net contribution after subtracting overlap,
+  a server/client responsibility table, and a per-channel input/output case.
+- `REPRODUCIBILITY.md` refreshed (November hackathon, current test count,
+  current version, hybrid case instructions, MoonBit 1.0 RC status).
+- Verified on the MoonBit 1.0 Release Candidate toolchain (`moonc v1.0.0-rc1`):
+  `moon fix` proposes no source changes and `moon check --deny-warn` is clean.
+- The integration workflow now runs a Qdrant matrix (`v1.15.5`, `v1.20.2`).
+  Qdrant deprecated `/locks` in 1.15 and removed it in 1.16, so the demo and
+  integration check read `service_info().version` and skip those assertions
+  on newer servers. `get_locks` / `set_locks` are documented as legacy-only.
+
+### Added
+
+- Two regression tests: the lexical channel ranks by literal terms rather
+  than vectors, and a fixed semantic + lexical input/output case fuses to a
+  deterministic order (91 unit tests total).
+
+### Fixed
+
+- The examples now wait for Qdrant to finish an asynchronous collection
+  deletion before recreating it. An immediate `create_collection` after
+  `delete_collection` could answer 409 and fail an otherwise correct run.
+
 ## [0.8.1] - 2026-11-25
 
 ### Fixed

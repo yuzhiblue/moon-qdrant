@@ -12,19 +12,100 @@ transparent compression), the MoonBit core JSON library, and adds a
 client-side retrieval layer for tenant isolation, multi-channel fusion,
 deduplication and bounded batch writes.
 
-## Why
+## Positioning: reuse boundary and net contribution
 
-Qdrant is one of the most widely used vector databases for RAG and embedding
-search. The MoonBit ecosystem already has vector engines and servers
-(e.g. `trkbt10/vcdb`), but no client library to talk to a running Qdrant
-service. moon-qdrant fills that gap with a typed API for Qdrant's endpoints
-and, beyond the transport, a retrieval layer (`retrieval.mbt`) that owns the
-semantics Qdrant itself does not decide: reciprocal-rank fusion across
-channels, business-key deduplication, mandatory tenant filtering with
-payload verification, bounded batch partitioning and full scroll pagination.
-Exact u64 id handling (ids above 2^53 lose precision as doubles), the typed
-filter DSL and Qdrant wire-shape compatibility are also implemented here,
-not delegated to the server.
+Several MoonBit packages now overlap with parts of this project. We state the
+boundary explicitly instead of claiming a gap that no longer exists.
+
+| Existing package | What it already provides | What this project does **not** claim |
+|---|---|---|
+| `lexchb/moon_vector` (0.1.1) | Qdrant REST v2 through a `VectorStore` trait, typed filters including geo/nested, in-memory local backend, `PointId = Num(UInt64) \| Uuid` | First Qdrant client; broadest filter DSL |
+| `moonbitstack/moonqdrant` (0.1.1) | Qdrant as a `moonrag` `VectorStore` (7 methods), cosine recomputed locally | RAG pipeline, embeddings, chunking |
+| `niuniu513-ask/MoonRetrieve` (0.6.0) | Zero-FFI local tokenisation (zh/en/jp), BM25 inverted index, RRF hybrid search | BM25, tokenisation, local-first search |
+| `heyq02/moomem`, `NaIWaniubi/moonseek`, `walkzzz/agentskills.mbt` | Vector + BM25 with RRF, full-text engines, exported `rrf_fuse` | Generic RRF algorithm |
+| `trkbt10/vcdb` (0.3.2) | A vector database server (HNSW / IVF) with a REST-style gateway | Being a vector engine or server |
+
+After subtracting that overlap, the net contribution is:
+
+1. **Qdrant operations coverage.** Cluster / shard operations, service write
+   locks, snapshots, aliases, facets, grouped and batch search, payload-index
+   management, the Query API and service info. The other Qdrant packages
+   expose roughly 7–11 store methods and none of these admin endpoints.
+2. **A tenant-safety envelope** (`TenantScope`) that both injects the
+   mandatory `tenant_id` condition and verifies returned payloads, so a
+   provider that silently ignores a filter cannot leak another tenant's data.
+3. **A stable cross-channel result contract** (`RankedHit`) with total
+   ordering, one RRF contribution per channel even for duplicate ids,
+   score/payload pairing from the same hit, and business-key deduplication
+   (`dedupe_hits`). The RRF arithmetic itself is standard and is not claimed
+   as a novel algorithm.
+4. **Bounded I/O helpers** (`chunk_points`, `scroll_all`) with an explicit
+   page bound and repeated-offset detection.
+5. **Exact `u64` wire handling** for point ids and peer ids, including ids
+   above 2^53 that a JSON `Double` cannot represent exactly.
+
+The lexical channel is deliberately **not** implemented by this library:
+tokenisation and BM25 already exist in `MoonRetrieve`. `examples/rag_case`
+uses a small literal term scorer only to show how an external lexical channel
+plugs into the `RankedHit` contract; a production pipeline can feed
+`MoonRetrieve`'s BM25 scores in unchanged.
+
+## What Qdrant does and what this client does
+
+Qdrant already implements vector search, payload filtering, scroll pagination,
+named vectors, and **server-side RRF** through Query API `prefetch` plus
+`fusion` (`rrf` / `dbsf`). That fusion is scoped to prefetches inside one
+query against one collection. This library does not reimplement those server
+capabilities. It handles only work that crosses a request or provider
+boundary:
+
+| Concern | Qdrant server | moon-qdrant client |
+|---|---|---|
+| Vector similarity, payload filter, one scroll page | yes | builds requests, parses responses |
+| RRF inside one Query API call | yes (`fusion: "rrf"`) | not used |
+| RRF across independent collections, queries or providers | not one request | `rrf_fuse` |
+| Tenant condition and verification of returned payloads | filter only | `TenantScope` injects **and** verifies |
+| Business-document deduplication across channels | no | `dedupe_hits` |
+| Batch-size bound, all-page accumulation | one page at a time | `chunk_points`, `scroll_all` |
+| Exact `u64` ids / peer ids over JSON | wire-defined | `Int64` plus textual `repr` |
+
+CI runs the full end-to-end suite against both `qdrant/qdrant:v1.15.5` and
+`v1.20.2`. The service `/locks` assertions are version-gated: Qdrant
+deprecated that endpoint in 1.15 and removed it in 1.16, so they run only on
+the older server. Everything else is asserted on both versions.
+
+## Recall channels: input and output
+
+The concrete case below is exercised by `retrieval_test.mbt` and
+`examples/rag_case/main.mbt`. The pure channel logic is verified by
+`moon test`; only the Qdrant round trip needs a server.
+
+The example inserts a second point with the same `doc_id` as `kb-004` so
+deduplication is observable. Scores below are from a real Qdrant 1.20.2 run.
+
+**Semantic channel**
+- input: vector `[0.1, 0.2, 0.3, 0.4]`, filter `tenant_id=acme AND lang=zh`
+- output: `kb-001` (1.0000), `kb-002` (0.9938), `kb-003` (0.9844),
+  `kb-004` (0.9759), `kb-004` duplicate (0.9722)
+
+**Lexical channel**
+- input: terms `["retrieval", "recall"]`, same tenant filter
+- output: `kb-004` (1.0), its duplicate (1.0), `kb-002` (0.5); `kb-001` is not
+  a term hit at all
+
+The two channels disagree on the top hit, which is why a single score scale
+cannot decide the answer.
+
+**Client fusion** (`rrf_fuse`, k=60, limit=5)
+- input: the two ranked lists above
+- output (RRF score): `kb-004` (0.032018, 2 sources), `kb-002` (0.032002,
+  2 sources), `kb-004` duplicate (0.031514, 2 sources), `kb-001` (0.016393,
+  1 source), `kb-003` (0.015873, 1 source)
+
+**Tenant guard + deduplication**
+- input: fused list plus a foreign-tenant document
+- output: the foreign document is dropped; the two `kb-004` copies collapse
+  into one
 
 ## Install
 
@@ -251,7 +332,8 @@ client.replicate_shard("demo", 0L, 1L, 2L)
 client.create_shard_replica("demo", 0L, 2L)
 client.delete_shard_replica("demo", 0L, 2L)
 
-// write lock + server version
+// write lock + server version. The /locks calls work only on Qdrant ≤ 1.15;
+// the endpoint was removed in 1.16. Check service_info().version first.
 client.set_locks(true, error_message=Some("maintenance"))
 let lock = client.get_locks()
 println("writes locked: " + lock.write.to_string())
@@ -298,8 +380,10 @@ docker run -p 6333:6333 qdrant/qdrant
 moon run examples/demo -- http://localhost:6333
 ```
 
-Multi-tenant RAG business case (two retrieval channels, tenant-scoped filter,
-RRF fusion, deduplication and paged export):
+Multi-tenant hybrid retrieval case: a dense-vector semantic channel and a
+literal-term lexical channel over the same tenant-scoped collection, followed
+by RRF fusion, tenant verification, deduplication and paged export. The run
+prints each channel's input and output before the fused result:
 
 ```bash
 moon run examples/rag_case -- http://localhost:6333
@@ -307,10 +391,13 @@ moon run examples/rag_case -- http://localhost:6333
 
 ## Retrieval semantics (client-side)
 
-Qdrant performs each individual search; the following are computed by
-`retrieval.mbt` in the client and work across different channels/providers:
+Qdrant performs vector search, filtering and pagination; it also offers
+server-side RRF inside a single Query API call. The following work happens in
+`retrieval.mbt` because it spans channels or requests:
 
-- `rrf_fuse` — reciprocal rank fusion of several ranked lists
+- `rrf_fuse` — rank fusion of several independently produced lists; the
+  arithmetic is standard RRF, the contribution here is the cross-channel
+  `RankedHit` contract and its deterministic, duplication-safe accounting
 - `dedupe_hits` — keep the best hit per business document id (payload key)
 - `TenantScope` — inject a mandatory tenant condition and verify returned
   payloads, so a provider that ignores filters cannot leak another tenant's data
@@ -349,7 +436,8 @@ Implemented:
 - [x] `POST /collections/{name}/facet` facet counts
 - [x] `POST /collections/aliases` / `GET /aliases` collection aliases
 - [x] `GET|POST|DELETE /collections/{name}/snapshots` snapshot management
-- [x] `GET|POST /locks` service write lock
+- [x] `GET|POST /locks` service write lock (Qdrant ≤ 1.15 only; deprecated in
+  1.15 and removed in 1.16)
 - [x] `GET /` server info (version / commit)
 - [x] `GET /cluster` cluster state (status, peers, raft info)
 - [x] `GET /collections/{name}/cluster` per-collection shard / replica layout

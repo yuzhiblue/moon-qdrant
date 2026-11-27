@@ -1417,6 +1417,10 @@ pub async fn QdrantClient::search_points_groups(
 /// Read the global write lock state via `GET /locks`. Qdrant locks are
 /// service-wide (not per-collection); when `write` is true the service
 /// rejects write operations.
+///
+/// Qdrant deprecated this endpoint in 1.15 and removed it in 1.16; callers
+/// targeting newer servers should not use it. Check `service_info().version`
+/// before calling, as the examples do.
 pub async fn QdrantClient::get_locks(self : QdrantClient) -> CollectionLock {
   let json = self.request_json(Get, "/locks", None)
   match parse_result(json) {
@@ -1434,6 +1438,9 @@ pub async fn QdrantClient::get_locks(self : QdrantClient) -> CollectionLock {
 ///
 /// When `write` is true the service rejects write operations; provide an
 /// optional `error_message` returned to clients on rejected writes.
+///
+/// Qdrant deprecated this endpoint in 1.15 and removed it in 1.16; callers
+/// targeting newer servers should not use it.
 pub async fn QdrantClient::set_locks(
   self : QdrantClient,
   write : Bool,

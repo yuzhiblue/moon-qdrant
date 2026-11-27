@@ -124,6 +124,41 @@ test "tenant scope rejects an empty tenant id" {
 }
 
 ///|
+test "hybrid case: semantic and lexical channels fuse deterministically" {
+  // Mirrors examples/rag_case against a real Qdrant: five semantic hits
+  // (kb-004 appears twice) and three lexical hits for "retrieval recall".
+  // The channels disagree on the top hit: fusion must not pick a single
+  // channel's raw score.
+  let semantic = [
+    hit(1L, 1.0, "semantic", Some(doc_payload("kb-001", "acme"))),
+    hit(2L, 0.9938, "semantic", Some(doc_payload("kb-002", "acme"))),
+    hit(3L, 0.9844, "semantic", Some(doc_payload("kb-003", "acme"))),
+    hit(4L, 0.9759, "semantic", Some(doc_payload("kb-004", "acme"))),
+    hit(6L, 0.9722, "semantic", Some(doc_payload("kb-004", "acme"))),
+  ]
+  let lexical = [
+    hit(4L, 1.0, "lexical", Some(doc_payload("kb-004", "acme"))),
+    hit(6L, 1.0, "lexical", Some(doc_payload("kb-004", "acme"))),
+    hit(2L, 0.5, "lexical", Some(doc_payload("kb-002", "acme"))),
+  ]
+  let fused = @moon-qdrant.rrf_fuse([semantic, lexical], k=60, limit=5)
+  assert_true(fused.length() == 5)
+  // id 4: 1/64+1/61; id 2: 1/62+1/63; id 6: 1/65+1/62;
+  // id 1: 1/61; id 3: 1/63
+  assert_true(fused[0].id == 4L)
+  assert_true(fused[1].id == 2L)
+  assert_true(fused[2].id == 6L)
+  assert_true(fused[3].id == 1L)
+  assert_true(fused[4].id == 3L)
+  assert_true(fused[0].rrf_score > 0.03201 && fused[0].rrf_score < 0.03203)
+  assert_true(fused[1].rrf_score > 0.03199 && fused[1].rrf_score < 0.03201)
+  let deduped = @moon-qdrant.dedupe_hits(fused)
+  assert_true(deduped.length() == 4)
+  assert_true(deduped[0].id == 4L)
+  assert_true(deduped[3].id == 3L)
+}
+
+///|
 test "chunk_points splits writes into bounded batches" {
   let points : Array[@moon-qdrant.PointStruct] = []
   for id in 0..<5 {

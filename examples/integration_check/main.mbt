@@ -24,6 +24,55 @@ fn check(name : String, cond : Bool) -> Unit {
 }
 
 ///|
+/// Qdrant removes collections asynchronously. Wait for the registry entry to
+/// disappear before recreating it, otherwise the next create can answer 409.
+async fn delete_and_wait(
+  client : @moon_qdrant.QdrantClient,
+  name : String,
+) -> Unit {
+  client.delete_collection(name)
+  let mut tries = 0
+  while tries < 20 && client.collection_exists(name) {
+    tries = tries + 1
+  }
+  if client.collection_exists(name) {
+    abort("collection still exists after delete: " + name)
+  }
+}
+
+///|
+/// The service write-lock API (`GET|POST /locks`) was deprecated in Qdrant
+/// 1.15 and removed in 1.16. Parse the server version reported by `GET /`
+/// so the same check can run against both old and current servers.
+fn version_part(part : StringView) -> Int32? {
+  Some(@string.parse_int(part)) catch {
+    _ => None
+  }
+}
+
+///|
+fn supports_lock_api(version : String?) -> Bool {
+  match version {
+    None => true
+    Some(v) => {
+      let parts = v.split(".").collect()
+      if parts.length() < 2 {
+        true
+      } else {
+        match version_part(parts[0]) {
+          Some(major) =>
+            match version_part(parts[1]) {
+              Some(minor) => major < 1 || (major == 1 && minor < 16)
+              None => true
+            }
+          None => true
+        }
+      }
+    }
+  }
+}
+
+///|
 async fn main {
   let argv = @env.args()
   let base = if argv.length() > 1 { argv[1] } else { "http://localhost:6333" }
@@ -38,7 +87,7 @@ async fn main {
 
   // reset any previous run
   if client.collection_exists(collection) {
-    client.delete_collection(collection)
+    delete_and_wait(client, collection)
   }
 
   // create collection
@@ -403,17 +452,24 @@ async fn main {
   check("alias listed", aliases.length() >= 1)
   client.delete_alias("integration-alias")
 
-  // service write lock (Qdrant locks are service-wide)
-  client.set_locks(true, error_message=Some("maintenance"))
-  let lock = client.get_locks()
-  check("collection locked", lock.write)
-  client.set_locks(false)
-  let unlocked = client.get_locks()
-  check("collection unlocked", !unlocked.write)
-
   // service + cluster (single node answers these too)
   let service = client.service_info()
   check("service_info reports a version", service.version is Some(_))
+
+  // Service write lock (Qdrant locks are service-wide). The endpoint was
+  // removed in Qdrant 1.16, so CI exercises it on 1.15 and skips it on
+  // newer servers rather than failing on a 404.
+  if supports_lock_api(service.version) {
+    client.set_locks(true, error_message=Some("maintenance"))
+    let lock = client.get_locks()
+    check("collection locked", lock.write)
+    client.set_locks(false)
+    let unlocked = client.get_locks()
+    check("collection unlocked", !unlocked.write)
+  } else {
+    println("[SKIP] service write lock: /locks removed in Qdrant 1.16")
+  }
+
   let cluster = client.cluster_info()
   check(
     "cluster_info reports status",
@@ -429,7 +485,7 @@ async fn main {
   // exactly the requested id, never the rounded neighbour.
   let big_collection = "moon-qdrant-integration-check-big-ids"
   if client.collection_exists(big_collection) {
-    client.delete_collection(big_collection)
+    delete_and_wait(client, big_collection)
   }
   client.create_collection(
     big_collection,

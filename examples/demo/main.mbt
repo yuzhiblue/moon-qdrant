@@ -173,7 +173,7 @@ async fn main {
   // ---- named vectors ----
   let named_collection = "moon-qdrant-demo-named"
   if client.collection_exists(named_collection) {
-    client.delete_collection(named_collection)
+    delete_and_wait(client, named_collection)
   }
   let named_vectors : Map[String, @moon_qdrant.VectorParams] = Map([])
   named_vectors["text"] = @moon_qdrant.VectorParams::new(
@@ -223,13 +223,67 @@ async fn main {
     " peers=" +
     cluster.peers.length().to_string(),
   )
-  let lock = client.get_locks()
-  println("collection lock write=" + lock.write.to_string())
   let info = client.service_info()
   match info.version {
     Some(v) => println("qdrant version: " + v)
     None => println("qdrant version: unknown")
   }
 
+  // /locks was removed in Qdrant 1.16; show it only where it exists.
+  if supports_lock_api(info.version) {
+    let lock = client.get_locks()
+    println("collection lock write=" + lock.write.to_string())
+  } else {
+    println("collection lock: not available (removed in Qdrant 1.16)")
+  }
+
   println("demo finished")
+}
+
+///|
+/// Qdrant removes collections asynchronously. Wait for the registry entry to
+/// disappear before recreating it, otherwise the next create can answer 409.
+async fn delete_and_wait(
+  client : @moon_qdrant.QdrantClient,
+  name : String,
+) -> Unit {
+  client.delete_collection(name)
+  let mut tries = 0
+  while tries < 20 && client.collection_exists(name) {
+    tries = tries + 1
+  }
+  if client.collection_exists(name) {
+    abort("collection still exists after delete: " + name)
+  }
+}
+
+///|
+/// The service write-lock API (`GET|POST /locks`) was deprecated in Qdrant
+/// 1.15 and removed in 1.16.
+fn version_part(part : StringView) -> Int32? {
+  Some(@string.parse_int(part)) catch {
+    _ => None
+  }
+}
+
+///|
+fn supports_lock_api(version : String?) -> Bool {
+  match version {
+    None => true
+    Some(v) => {
+      let parts = v.split(".").collect()
+      if parts.length() < 2 {
+        true
+      } else {
+        match version_part(parts[0]) {
+          Some(major) =>
+            match version_part(parts[1]) {
+              Some(minor) => major < 1 || (major == 1 && minor < 16)
+              None => true
+            }
+          None => true
+        }
+      }
+    }
+  }
 }
